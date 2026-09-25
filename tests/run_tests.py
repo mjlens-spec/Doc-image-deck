@@ -440,6 +440,32 @@ class TestTextcheck(unittest.TestCase):
         self.assertLess(textcheck.best_ratio(s, texts), 0.8)                     # OCR order interleaves the columns
         self.assertEqual(textcheck.best_ratio(s, texts, textcheck.column_stacks(lines)), 1.0)
 
+    def test_label_above_date(self):
+        try:
+            import textcheck
+        except ImportError:
+            self.skipTest('Pillow not installed')
+        box = lambda t, x0, y0: {'text': t, 'x0': x0, 'y0': y0, 'x1': x0 + 30 * len(t), 'y1': y0 + 34}
+        lines = [box('签约与准备', 40, 180), box('冷启动', 300, 180), box('9.24—10.11', 40, 218), box('10.12—11.8', 300, 218)]
+        texts = [L['text'] for L in lines]
+        s = '签约与准备 9.24—10.11'
+        self.assertLess(textcheck.best_ratio(s, texts), 1.0)
+        self.assertEqual(textcheck.best_ratio(s, texts, textcheck.column_stacks(lines)), 1.0)
+
+    def test_no_page_number_corner_on_cover(self):
+        try:
+            import textcheck
+        except ImportError:
+            self.skipTest('Pillow not installed')
+        cfg = E.load_project(tempfile.mkdtemp(prefix='did_cfg_'))
+        self.assertTrue(E.page_number_on(cfg, 2, 15))
+        self.assertFalse(E.page_number_on(cfg, 1, 15))
+        self.assertFalse(E.page_number_on(cfg, 15, 15))
+        self.assertIn('br', textcheck.corner_boxes(cfg, 1672, 941, True))
+        self.assertNotIn('br', textcheck.corner_boxes(cfg, 1672, 941, False))
+        self.assertEqual(build_prompts.reserved_corners(cfg, 1, 15), [])
+        self.assertEqual(len(build_prompts.reserved_corners(cfg, 2, 15)), 1)
+
 
 class TestHostos(unittest.TestCase):
     def test_runtime_paths(self):

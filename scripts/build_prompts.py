@@ -20,8 +20,9 @@ import visual
 
 CORNER_NAME = {'bl': 'bottom-left', 'br': 'bottom-right', 'tl': 'top-left', 'tr': 'top-right'}
 
-def reserved_corners(cfg):
-    """Corners compose.py will use, sized from the logo aspect ratio and page-number box."""
+def reserved_corners(cfg, n=None, total=None):
+    """Corners compose.py will use on slide n, sized from the logo aspect ratio and page-number box
+    (no page-number corner on slides that get no page number, such as the cover)."""
     zones = {}
     m = cfg['margin_in']
     for lg in cfg['logos']:
@@ -35,7 +36,7 @@ def reserved_corners(cfg):
         wi = m + lg.get('height_in', 0.26) * aspect + 0.45
         zones[lg.get('corner', 'bl')] = max(zones.get(lg.get('corner', 'bl'), 0), wi)
     pn = cfg.get('page_number') or {}
-    if pn.get('corner'):
+    if pn.get('corner') and (n is None or E.page_number_on(cfg, n, total)):
         zones[pn['corner']] = max(zones.get(pn['corner'], 0), m + 1.0)
     out = []
     for c, wi in zones.items():
@@ -142,7 +143,7 @@ def build(cfg, outline, page, n, total, direction):
                  'full stop (。) or any other mark at the end of a string that does not have one above. '
                  'No invented labels, captions, English decoration words, placeholder text or gibberish. The title is the largest text; '
                  'body text stays comfortably readable on a meeting-room screen.')
-    zones = reserved_corners(cfg)
+    zones = reserved_corners(cfg, n, total)
     if zones and page.get('footnote') and any(z.startswith('the bottom') for z in zones):
         lines.append('Footnote placement: the footnote sits just above the reserved bottom corners, never inside them.')
     if zones:

@@ -1,6 +1,6 @@
 # 文图方案 · Doc-image-deck
 
-![version](https://img.shields.io/badge/version-1.2.0-blue.svg) ![license](https://img.shields.io/badge/license-MIT-green.svg) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
+![version](https://img.shields.io/badge/version-1.2.1-blue.svg) ![license](https://img.shields.io/badge/license-MIT-green.svg) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
 
 从一份文档出发，做出一套「整页生图」风格的演示稿，最后交付文字和排版都能自由修改的 PowerPoint。Claude Code 与 Codex（ChatGPT）共用同一个 skill，生图用 ChatGPT 套餐里的 Codex 内置 `image_gen`，不走 API。支持 macOS 和 Windows 10 22H2 / 11。
 
@@ -110,6 +110,7 @@ agent 会按 `SKILL.md` 的流程执行，在两个确认点停下来等你。�
 | 4 页文档端到端（macOS） | 白板稿几秒；3 个方向 6 张样张约 3 分钟；4 页全量生图 77 秒；可编辑还原约 3 分钟，32 条文案与白板稿逐字一致 |
 | 同一 4 页走 Windows 的识别与渲染路径（RapidOCR + pypdfium2，在 Mac 上运行） | 32 条文案逐字一致；逐页色差 7.76、12.96、5.29、4.85，与 Apple Vision 路径（8.04、13.34、5.91、5.52）相当 |
 | 15 页执行规划端到端（macOS，1.2.0） | 白板稿 15 页，13 页内容页用 8 种构图骨架；3 个方向 6 张样张一次成功；全量 15 页一次成功，2 页返修；可编辑版 274 行文字可编辑，与图文版逐页平均色差均值 8.11 |
+| 同一份执行规划第二版（macOS，1.2.1） | 先做品牌调研，再出 3 个扁平杂志编辑风方向；上屏文字增加 48%；全量 15 页一次成功，2 页返修；可编辑版 364 行文字可编辑，逐页平均色差均值 9.22 |
 | 生图单张耗时 | 55–145 秒（附参考图时偏长），4 路并发 |
 
 ## 关于生图模型

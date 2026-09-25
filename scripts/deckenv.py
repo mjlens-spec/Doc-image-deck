@@ -92,6 +92,14 @@ def load_project(proj):
     return cfg
 
 
+def page_number_on(cfg, n, total):
+    """Whether compose.py puts a page number on slide n of total (the cover and closing slides skip it by default)."""
+    pn = cfg.get('page_number') or {}
+    if not pn.get('corner'):
+        return False
+    return not ((n == 1 and pn.get('skip_first', True)) or (n == total and pn.get('skip_last', True)))
+
+
 def save_project(proj, cfg):
     json.dump(cfg, open(os.path.join(proj, 'project.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 

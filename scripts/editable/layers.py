@@ -458,6 +458,23 @@ def spaced_track(text, fam, w, px, wm, extra, pq=0.0):
     n = len(text); ns = text.count(' ')
     return (wm - (rw['x1'] - rw['x0']) - extra * ns - pq * len(punct_slots(text))) / max(1, n - 1)
 
+MAX_NEG_TRACK = 0.06        # tightest tracking, as a share of the font size, before glyphs start to collide
+
+def cap_tracking(text, fam, w, px, wm, extra, pq=0.0):
+    """Generated headline faces are often narrower than Noto: matching their width by tracking alone needs 15-20 %
+    negative tracking and the glyphs collide. Keep tracking at or above -MAX_NEG_TRACK of the size and shrink the
+    size instead. Returns (px, track)."""
+    track = spaced_track(text, fam, w, px, wm, extra, pq)
+    for _ in range(6):
+        if track is None or track >= -MAX_NEG_TRACK * px:
+            break
+        rw = render(text, fam, w, px)
+        nat = rw['x1'] - rw['x0']
+        s = (wm - extra * text.count(' ')) / max(1.0, nat - MAX_NEG_TRACK * px * (len(text) - 1))
+        px *= min(0.99, max(0.7, s))
+        track = spaced_track(text, fam, w, px, wm, extra, pq)
+    return px, track
+
 def track_list(text, track, extra, pq=0.0):
     slots = set(punct_slots(text)) if pq else ()
     return [track + (extra if c == ' ' else 0.0) + (pq if i in slots else 0.0) for i, c in enumerate(text)]
@@ -809,6 +826,9 @@ def fit_segment(img, seg, W, H, families):
             px *= px_scale
     occ = ink[iy0:iy1, ix0:ix1].any(0)
     text, track, sp_extra, col_iou, pq = fit_spacing(text, fam, w, px, occ, exact=bool(seg.get('exact')))
+    if track < -MAX_NEG_TRACK * px:
+        px2, track = cap_tracking(text, fam, w, px, ix1 - ix0, sp_extra, pq)
+        px_scale *= px2 / px; px = px2
     n = len(text)
     rt = render(text, fam, w, px, 0, track_runs=track_list(text, track, sp_extra, pq))
     base = ((Y0 + iy0) - rt['top'] + (Y0 + iy1) - rt['bot']) / 2.0
@@ -865,6 +885,8 @@ def refit(f, fam, w, px=None):
     track = spaced_track(text, fam, w, px, ix1 - ix0, e, q)
     if track is None:
         return
+    if track < -MAX_NEG_TRACK * px:
+        px, track = cap_tracking(text, fam, w, px, ix1 - ix0, e, q)
     rt = render(text, fam, w, px, 0, track_runs=track_list(text, track, e, q))
     f.update(family=fam, weight=w, px=px, track_px=track, space_extra_px=e, punct_extra_px=q,
              base=(iy0 - rt['top'] + iy1 - rt['bot']) / 2.0, left=ix0 - rt['x0'])

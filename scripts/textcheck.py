@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Stage 2 QA · OCR every generated slide and check each verbatim string of its prompt, and that the reserved
-logo / page-number corners hold no text. A string may sit on one OCR line, two adjacent lines, or up to four lines
-stacked in one column (text wrapped inside a diagram node).
+logo / page-number corners hold no text (the page-number corner only on slides that get a page number). A string
+may sit on one OCR line, two adjacent lines, or two to four lines stacked in one column (text wrapped inside a
+diagram node, a label above its date in a timeline).
 
 Usage: textcheck.py <project> <prompts_dir> <raw_dir> [--pages p01,p02]
 Uses <raw_dir>/selected.json. Writes <raw_dir>/textcheck.json and prints one line per page:
@@ -40,7 +41,7 @@ def best_ratio(s, lines, stacks=()):
     return best
 
 def column_stacks(lines, depth=4):
-    """Text of up to `depth` OCR lines stacked in one column (a string wrapped inside a narrow diagram node or card):
+    """Text of two to `depth` OCR lines stacked in one column (a string wrapped inside a narrow diagram node or card):
     each next line starts just below the previous one and overlaps it horizontally by at least half the narrower width.
     OCR output order interleaves columns, so adjacent entries of the line list miss these."""
     rows = sorted(lines, key=lambda L: L['y0'])
@@ -55,8 +56,7 @@ def column_stacks(lines, depth=4):
                 break
             last = min(nxt, key=lambda M: M['y0'])
             chain.append(last)
-            if len(chain) >= 3:
-                out.append(''.join(M['text'] for M in chain))
+            out.append(''.join(M['text'] for M in chain))
     return out
 
 def extra_stops(strings, texts):
@@ -74,10 +74,11 @@ def extra_stops(strings, texts):
                 break
     return out
 
-def corner_boxes(cfg, W, H):
+def corner_boxes(cfg, W, H, number=True):
+    """Reserved corners: the logo corners, plus the page-number corner when the slide gets a page number."""
     boxes = {}
     pn = cfg.get('page_number') or {}
-    corners = [lg.get('corner', 'bl') for lg in cfg['logos']] + ([pn['corner']] if pn.get('corner') else [])
+    corners = [lg.get('corner', 'bl') for lg in cfg['logos']] + ([pn['corner']] if pn.get('corner') and number else [])
     for c in set(corners):
         w = 0.20 * W if c.endswith('l') else 0.12 * W
         x0 = 0 if c.endswith('l') else W - w
@@ -96,6 +97,7 @@ def main():
     want = [p.strip() for p in a.pages.split(',') if p.strip()] or sorted(sel)
     paths = {pid: os.path.abspath(os.path.join(a.raw, sel[pid])) for pid in want if pid in sel}
     res = ocr_many(list(paths.values()))
+    total = len(E.page_ids(E.load_outline(a.project)))
     report = {}
     for pid, path in paths.items():
         lines = res.get(path, [])
@@ -112,7 +114,8 @@ def main():
             elif r < 1.0:
                 near.append(s)
         corner = []
-        for c, (x0, y0, x1, y1) in corner_boxes(cfg, W, H).items():
+        n = index.get(pid, {}).get('n')
+        for c, (x0, y0, x1, y1) in corner_boxes(cfg, W, H, n is None or E.page_number_on(cfg, n, total)).items():
             for L in lines:
                 cx, cy = (L['x0'] + L['x1']) / 2, (L['y0'] + L['y1']) / 2
                 if x0 <= cx <= x1 and y0 <= cy <= y1 and len(E.norm(L['text'])) >= 2:
