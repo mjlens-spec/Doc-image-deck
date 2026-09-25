@@ -13,14 +13,17 @@ import hostos
 def font(size):
     return hostos.ui_font(size, bold=True)
 
-def sheet(items, out, cols, width):
-    """Each tile: a label strip above the image, so the label never hides page content."""
+def sheet(items, out, cols, width, max_ratio=None):
+    """Each tile: a label strip above the image, so the label never hides page content.
+    max_ratio: images taller than width × max_ratio keep only their top part, so one long image does not stretch its row."""
     f = font(max(16, width // 32))
     strip = f.size + 14
     tiles = []
     for label, path in items:
         im = Image.open(path).convert('RGB')
         im = im.resize((width, int(im.height * width / im.width)), Image.LANCZOS)
+        if max_ratio and im.height > width * max_ratio:
+            im = im.crop((0, 0, width, int(width * max_ratio)))
         t = Image.new('RGB', (width, im.height + strip), (30, 30, 30))
         ImageDraw.Draw(t).text((8, 6), label, fill=(255, 220, 0), font=f)
         t.paste(im, (0, strip))

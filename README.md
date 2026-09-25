@@ -1,6 +1,6 @@
 # 文图方案 · Doc-image-deck
 
-![version](https://img.shields.io/badge/version-1.1.0-blue.svg) ![license](https://img.shields.io/badge/license-MIT-green.svg) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
+![version](https://img.shields.io/badge/version-1.2.0-blue.svg) ![license](https://img.shields.io/badge/license-MIT-green.svg) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
 
 从一份文档出发，做出一套「整页生图」风格的演示稿，最后交付文字和排版都能自由修改的 PowerPoint。Claude Code 与 Codex（ChatGPT）共用同一个 skill，生图用 ChatGPT 套餐里的 Codex 内置 `image_gen`，不走 API。支持 macOS 和 Windows 10 22H2 / 11。
 
@@ -10,9 +10,9 @@
 
 ```
 文档
- │  1 白板稿      outline.json → humanizer-zh 去 AI 味 → 标点整理 → 白板稿 PPTX（终稿文字 + 版面 / 配图建议，不做设计）
- │     ⏸ 确认点 1  用户确认白板稿；同时在本地查找视觉参考，并询问用户有没有参考
- │  2 设计方向    3 个完全不同的方向（用户给的参考作为其中之一）→ 每个方向 2 张样张
+ │  1 白板稿      outline.json（含逐页视觉规划）→ humanizer-zh 去 AI 味 → 标点整理 → 白板稿 PPTX（终稿文字 + 画法 / 版面 / 配图建议，不做设计）
+ │     ⏸ 确认点 1  用户确认白板稿；同时在本地查找视觉参考，并向用户索取参考、品牌材料和 Logo
+ │  2 设计方向    品牌 VI 与 Logo 快速调研（客户材料 + 联网检索）→ 3 个完全不同的方向（用户给的参考作为其中之一）→ 每个方向 2 张样张
  │     ⏸ 确认点 2  用户选方向
  │     全量生图    逐页生成整页图片（文字、版式、配图一次成形）→ OCR 核对文字、预留角落、多出的句号
  │  3 合成        放大 2 倍 + Logo + 页码（独立对象）→ 图文版 PPTX / PDF
@@ -31,26 +31,37 @@
 3. **白板稿先确认**：白板稿交给使用者确认后才能生图。确认记录写进 `project.json`；生成提示词的命令会核对，没有确认、或确认后上屏文字改过，都会拒绝运行。
 4. **三个完全不同的方向**：字体、配色、版式语法、配图、质感五项两两都不同，配图方式（写实摄影、产品静物、插画、纯图形、材质肌理、三维渲染、纯文字排版）三个方向各用一种，由 `deck directions` 检查。
 5. **视觉参考**：在项目目录、上级目录和原文档所在目录里查找图片、PDF、PPT 等可能的视觉参考，连同缩略图一起询问使用者。使用者给一个参考，它成为三个方向之一，另外两个方向由 agent 设计；不给参考，三个方向都由 agent 设计。
+6. **品牌调研先于设计方向**：定方向前先读客户提供的品牌手册、Logo、往期物料和截图，再联网检索品牌官网、旗舰店和官方账号，把品牌色（色值）、Logo 版本、字体、视觉风格与禁忌、对三个方向的约束写进 `品牌调研.md`。`deck directions` 在调研完成、每个方向都写明如何呼应品牌之前不放行。`deck logo` 把客户与代理的 Logo 拼成浅底、深底两版联合 Logo，只有一个版本时自动生成另一版。
+7. **逐页视觉规划**：分拆定稿后，逐页分析这一页要说清什么、文字之间是什么关系（流程、闭环、漏斗、时间轴、对比、构成……），写出具体画法、唯一的视觉焦点和构图骨架。提示词把风格系统写成全稿统一、把构图和图示写成逐页变化，并告诉模型前后两页用的骨架。`deck visual` 拦下缺规划、相邻两页同骨架、同一骨架用得过多的稿子，避免整套稿画成一页一个样板。
 
 ## 安装
 
-两个平台都需要 Microsoft PowerPoint、Codex CLI（用 ChatGPT 账号 `codex login`）和 git。
+一次安装同时给 Claude Code 和 Codex 用：skill 复制到 `~/.agents/skills/doc-image-deck/`，两个客户端各有一个链接指向它。两边都需要 Microsoft PowerPoint、Python 3.10+、git，以及用 ChatGPT 账号登录的 Codex CLI（生图走 Codex 内置 `image_gen`，在 Claude Code 里使用也一样）。
 
-macOS（另需 Xcode 命令行工具 `xcode-select --install`、Homebrew）：
+### Claude Code（终端、IDE 插件、Claude 桌面应用的 Code 标签页）
 
 ```bash
-git clone https://github.com/mjlens-spec/Doc-image-deck.git
-python3 Doc-image-deck/scripts/install.py
+git clone https://github.com/mjlens-spec/Doc-image-deck.git ~/Doc-image-deck
+python3 ~/Doc-image-deck/scripts/install.py
+~/.claude/skills/doc-image-deck/scripts/deck check
 ```
 
-Windows 10 22H2 / 11（PowerShell；Python 用 `winget install Python.Python.3.12` 安装，Codex CLI 用 `npm i -g @openai/codex` 安装）：
+最后一行显示「环境就绪。」后，新开一个会话，输入 `/doc-image-deck` 或说「用文图方案把这份文档做成提案」。品牌调研用 Claude Code 自带的联网检索。完整步骤、Windows 命令、权限设置和给 agent 的逐条安装步骤见 [docs/install-claude.md](docs/install-claude.md)。
 
-```powershell
-git clone https://github.com/mjlens-spec/Doc-image-deck.git
-py -3 Doc-image-deck\scripts\install.py
+### Codex（ChatGPT 账号登录的 Codex CLI）
+
+```bash
+git clone https://github.com/mjlens-spec/Doc-image-deck.git ~/Doc-image-deck
+python3 ~/Doc-image-deck/scripts/install.py
+~/.codex/skills/doc-image-deck/scripts/deck check
+codex --search
 ```
 
-`install.py` 把 skill 复制到 `~/.agents/skills/doc-image-deck/`，在 `~/.claude/skills/` 和 `~/.codex/skills/` 各建一个链接，再运行 `setup.py` 安装运行环境（首次约 10–20 分钟）：
+`--search` 打开联网检索，品牌调研需要它。生图和驱动 PowerPoint 的命令会请求提权，按提示批准，或用 `codex --search -s danger-full-access` 启动。提示里写 `$doc-image-deck` 触发。完整步骤、Windows 命令和给 agent 的逐条安装步骤见 [docs/install-codex.md](docs/install-codex.md)。
+
+### 安装内容
+
+Windows 用 PowerShell 运行 `py -3 $HOME\Doc-image-deck\scripts\install.py`，入口是 `deck.cmd`。`install.py` 把 skill 复制到 `~/.agents/skills/doc-image-deck/`，在 `~/.claude/skills/` 和 `~/.codex/skills/` 各建一个链接，再运行 `setup.py` 安装运行环境（首次约 10–20 分钟）：
 
 | 项目 | macOS | Windows |
 |---|---|---|
@@ -77,10 +88,13 @@ agent 会按 `SKILL.md` 的流程执行，在两个确认点停下来等你。�
 | 命令 | 作用 |
 |---|---|
 | `deck humanize <项目> export` / `import` | 导出文案交给 humanizer-zh，处理后核对并写回 |
-| `deck whiteboard <项目>` | 标点整理 + 生成白板稿 PPTX |
+| `deck whiteboard <项目>` | 标点整理 + 生成白板稿 PPTX + 检查视觉规划 |
+| `deck visual <项目>` | 检查逐页视觉规划，生成视觉规划表 |
 | `deck refs <项目>` | 查找本地视觉参考，生成候选清单和缩略图对照 |
+| `deck brand <项目> init` / `check` | 品牌 VI 与 Logo 调研：生成调研模板、检查是否填完 |
+| `deck logo <项目> <Logo>[::反白版] …` | 生成浅底、深底用（联合）Logo，写入 `project.json` |
 | `deck approve <项目>` | 记录使用者已确认白板稿 |
-| `deck directions <项目>` | 检查三个方向是否完全不同，生成方向说明 |
+| `deck directions <项目>` | 检查品牌调研和三个方向，生成方向说明 |
 | `deck prompts` / `deck gen` / `deck textcheck` | 生成提示词、并发生图、核对文字 |
 | `deck compose <项目>` | 合成图文版 PPTX 与 PDF |
 | `deck editable …` | 还原为可编辑 PPTX 与 PDF |
@@ -95,7 +109,8 @@ agent 会按 `SKILL.md` 的流程执行，在两个确认点停下来等你。�
 | 74 页整页图片提案还原为可编辑版（macOS） | 1,631 行文字全部可编辑；与原稿逐页平均色差全稿均值 6.91（0–255 色阶） |
 | 4 页文档端到端（macOS） | 白板稿几秒；3 个方向 6 张样张约 3 分钟；4 页全量生图 77 秒；可编辑还原约 3 分钟，32 条文案与白板稿逐字一致 |
 | 同一 4 页走 Windows 的识别与渲染路径（RapidOCR + pypdfium2，在 Mac 上运行） | 32 条文案逐字一致；逐页色差 7.76、12.96、5.29、4.85，与 Apple Vision 路径（8.04、13.34、5.91、5.52）相当 |
-| 生图单张耗时 | 55–120 秒（附参考图时偏长），4 路并发 |
+| 15 页执行规划端到端（macOS，1.2.0） | 白板稿 15 页，13 页内容页用 8 种构图骨架；3 个方向 6 张样张一次成功；全量 15 页一次成功，2 页返修；可编辑版 274 行文字可编辑，与图文版逐页平均色差均值 8.11 |
+| 生图单张耗时 | 55–145 秒（附参考图时偏长），4 路并发 |
 
 ## 关于生图模型
 
@@ -112,6 +127,8 @@ scripts/hostos.py        平台差异：运行环境路径、识别、PDF、字�
 scripts/*.py             阶段 1–3、5 的脚本，setup.py / install.py 安装
 scripts/editable/        阶段 4 可编辑还原
 tests/                   单元测试（CI：Linux、Windows）与合成页面的全流程冒烟测试（CI：Windows）
+docs/install-claude.md   在 Claude Code 中安装（含给 agent 的逐条步骤）
+docs/install-codex.md    在 Codex 中安装（含给 agent 的逐条步骤）
 docs/前因后果.md          这个项目怎么来的、做过的决定和验证记录
 ```
 

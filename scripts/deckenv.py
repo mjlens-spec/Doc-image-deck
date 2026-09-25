@@ -41,6 +41,38 @@ IMAGERY_MODES = {
 }
 DIMS = [('typeface', '字体'), ('palette', '配色'), ('layout', '版式语法'), ('imagery', '配图'), ('texture', '质感')]
 
+# outline.json page "visual" brief (visual.py checks it, build_prompts.py writes it into the prompt).
+# structure: how the ideas on the slide relate to each other; decides what kind of diagram the slide gets.
+STRUCTURES = {
+    'claim':       ('单一论断', 'a single statement: type scale and one strong visual carry the page'),
+    'kpi':         ('关键数字', 'a few key numbers: the numbers are the heroes, with a simple graphic that shows their scale or direction'),
+    'compare':     ('对比', 'a comparison: the sides are drawn with the same structure next to each other so the differences stand out'),
+    'flow':        ('流程 / 链路', 'a sequence: nodes connected by arrows in reading order, each arrow meaning "leads to"'),
+    'loop':        ('闭环 / 回流', 'a closed loop: stages in a cycle, with the feedback path drawn explicitly'),
+    'funnel':      ('漏斗 / 收窄', 'a funnel: stages narrowing step by step, the loss between stages visible'),
+    'timeline':    ('时间轴 / 阶段', 'phases along a time axis from left to right, dates on the axis'),
+    'hierarchy':   ('层级 / 分解', 'a breakdown: one whole split into parts (tree, pyramid or nested shapes)'),
+    'composition': ('构成 / 占比', 'parts of a whole: a proportional graphic (stacked bar, ring, treemap or waffle) sized by the numbers'),
+    'matrix':      ('矩阵 / 分类', 'a matrix: items placed on two dimensions or in a grid of categories'),
+    'layers':      ('分层 / 梯度', 'tiers: stacked bands from core to periphery or from top to bottom, one strategy per tier'),
+    'roles':       ('分工 / 泳道', 'responsibilities: parallel lanes or columns, one per party'),
+    'checklist':   ('清单 / 待办', 'a checklist: items with owner and due date, checkbox-like markers'),
+    'list':        ('并列要点', 'parallel points of equal weight'),
+}
+# skeleton: the composition of the slide; neighbouring slides never share one, so the deck does not look templated.
+SKELETONS = {
+    'hero':     ('满版主视觉', 'one dominant visual or very large type fills the slide, little text'),
+    'split':    ('左右分屏', 'two panels side by side (about 40/60 or 50/50): text on one side, the visual on the other'),
+    'diagram':  ('整幅图示', 'title on top, one wide diagram filling at least two thirds of the slide'),
+    'cards':    ('并列卡片', 'three or four equal cards or columns in a row'),
+    'bignum':   ('大数字', 'one to three very large numbers dominate, with a supporting graphic'),
+    'table':    ('表格', 'a table or grid of cells dominates the slide'),
+    'bands':    ('横向分层', 'horizontal bands stacked from top to bottom, one tier per band'),
+    'radial':   ('中心放射', 'a central element with the other items arranged around it or on a ring'),
+    'asym':     ('非对称', 'an asymmetric layout: one large visual block and a narrow text column'),
+    'quadrant': ('四象限', 'a 2 × 2 grid of quadrants'),
+}
+
 
 def load_project(proj):
     p = os.path.join(proj, 'project.json')
@@ -48,6 +80,10 @@ def load_project(proj):
     cfg.setdefault('name', os.path.basename(os.path.abspath(proj)))
     cfg.setdefault('suffix', 'AC_%sA' % datetime.date.today().strftime('%m%d'))
     cfg.setdefault('logos', [])
+    for lg in cfg['logos']:                        # logo paths may be relative to the project folder
+        for k in ('light', 'dark'):
+            if lg.get(k) and not os.path.isabs(lg[k]):
+                lg[k] = os.path.normpath(os.path.join(os.path.abspath(proj), lg[k]))
     cfg.setdefault('page_number', {'corner': 'br', 'skip_first': True, 'skip_last': True,
                                    'format': '{:02d}', 'font': 'Arial', 'size_pt': 11})
     cfg.setdefault('margin_in', 0.8)

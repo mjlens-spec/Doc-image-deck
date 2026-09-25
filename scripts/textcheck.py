@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Stage 2 QA · OCR every generated slide and check each verbatim string of its prompt, and that the reserved
-logo / page-number corners hold no text.
+logo / page-number corners hold no text. A string may sit on one OCR line, two adjacent lines, or up to four lines
+stacked in one column (text wrapped inside a diagram node).
 
 Usage: textcheck.py <project> <prompts_dir> <raw_dir> [--pages p01,p02]
 Uses <raw_dir>/selected.json. Writes <raw_dir>/textcheck.json and prints one line per page:
@@ -22,13 +23,14 @@ def ocr_many(paths):
     os.remove(lst.name)
     return json.loads(out or '{}')
 
-def best_ratio(s, lines):
-    """Share of the characters of s found, in order, inside one OCR line or two adjacent lines."""
+def best_ratio(s, lines, stacks=()):
+    """Share of the characters of s found, in order, inside one OCR line, two adjacent lines or one column stack."""
     t = E.norm(s)
     if not t:
         return 1.0
     cands = [E.norm(x) for x in lines]
     cands += [cands[i] + cands[i + 1] for i in range(len(cands) - 1)]
+    cands += [E.norm(x) for x in stacks]
     best = 0.0
     for c in cands:
         if t in c:
@@ -36,6 +38,26 @@ def best_ratio(s, lines):
         m = sum(b.size for b in difflib.SequenceMatcher(None, t, c, autojunk=False).get_matching_blocks())
         best = max(best, m / float(len(t)))
     return best
+
+def column_stacks(lines, depth=4):
+    """Text of up to `depth` OCR lines stacked in one column (a string wrapped inside a narrow diagram node or card):
+    each next line starts just below the previous one and overlaps it horizontally by at least half the narrower width.
+    OCR output order interleaves columns, so adjacent entries of the line list miss these."""
+    rows = sorted(lines, key=lambda L: L['y0'])
+    out = []
+    for i, L in enumerate(rows):
+        chain, last = [L], L
+        for _ in range(depth - 1):
+            h = last['y1'] - last['y0']
+            nxt = [M for M in rows[i + 1:] if M not in chain and 0 <= M['y0'] - last['y1'] + h * 0.3 <= h * 1.2 and
+                   min(M['x1'], last['x1']) - max(M['x0'], last['x0']) >= 0.5 * min(M['x1'] - M['x0'], last['x1'] - last['x0'])]
+            if not nxt:
+                break
+            last = min(nxt, key=lambda M: M['y0'])
+            chain.append(last)
+            if len(chain) >= 3:
+                out.append(''.join(M['text'] for M in chain))
+    return out
 
 def extra_stops(strings, texts):
     """Strings whose rendered last line ends with 。 although the approved text has no full stop."""
@@ -78,12 +100,13 @@ def main():
     for pid, path in paths.items():
         lines = res.get(path, [])
         texts = [L['text'] for L in lines]
+        stacks = column_stacks(lines)
         W, H = Image.open(path).size
         miss, near = [], []
         for s in index.get(pid, {}).get('strings', []):
             if len(E.norm(s)) < 2:
                 continue
-            r = best_ratio(s, texts)
+            r = best_ratio(s, texts, stacks)
             if r < 0.8:
                 miss.append(s)
             elif r < 1.0:

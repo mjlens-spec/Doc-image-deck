@@ -218,7 +218,8 @@ def cmd_scan(a):
     if tiles:
         import contact_sheet
         for k in range(0, len(tiles), 12):
-            contact_sheet.sheet(tiles[k:k + 12], os.path.join(out_dir, '候选对照%s.jpg' % ('' if len(tiles) <= 12 else '_%d' % (k // 12 + 1))), 4, 420)
+            contact_sheet.sheet(tiles[k:k + 12], os.path.join(out_dir, '候选对照%s.jpg' % ('' if len(tiles) <= 12 else '_%d' % (k // 12 + 1))), 4, 420,
+                                max_ratio=0.75)
     shutil.rmtree(tmp, ignore_errors=True)
     lines += ['', '用法：用户选定的参考用 `deck refs <项目> --export R03 --pages 1,4 --to 01_设计方向/A/ref` 导出为图片，'
               '再写进该方向 direction.json 的 `refs`。用户另给的参考文件同样用 `--export <文件>` 导出。']

@@ -15,6 +15,9 @@ import directions
 import refs
 import humanize
 import hostos
+import visual
+import build_prompts
+import brand
 
 
 def outline():
@@ -114,7 +117,8 @@ class TestApproval(unittest.TestCase):
 
 
 def direction(i, mode, dims, source='original', refs_=None):
-    return {'id': i, 'name': i, 'summary': 's', 'source': source, 'refs': refs_ or [], 'light': 'Background: #FFFFFF',
+    return {'id': i, 'name': i, 'summary': 's', 'source': source, 'refs': refs_ or [], 'brand_fit': '品牌蓝作强调色',
+            'light': 'Background: #FFFFFF',
             'dark': 'Background: #000000', 'imagery': 'x', 'imagery_mode': mode, 'tone': {'cover': 'dark'},
             'dims': dict(zip(['typeface', 'palette', 'layout', 'imagery', 'texture'], dims)), '_path': '/nonexistent/%s/direction.json' % i}
 
@@ -144,6 +148,123 @@ class TestDirections(unittest.TestCase):
 
     def test_count(self):
         self.assertTrue(any('需要 3 个方向' in e for e in directions.check(self.good()[:2])[0]))
+
+    def test_brand_fit_required(self):
+        d = self.good(); d[1]['brand_fit'] = ''
+        self.assertTrue(any('brand_fit' in e for e in directions.check(d)[0]))
+
+
+BRAND_DONE = """# 品牌调研
+
+## 一、资料来源
+
+- 01_设计方向/品牌材料/品牌手册.pdf 第 3、8 页：标准色与 Logo 组合
+- https://example.com/about（2026-09-25）
+
+## 二、品牌色
+
+主色 #0E2A47（品牌手册第 3 页），强调色 #00B4D8
+
+## 三、Logo
+
+彩色版用于浅底，反白版用于深底，文件在 01_设计方向/品牌材料/
+
+## 四、字体与版式
+
+标题用粗黑体，正文常规黑体，物料大量留白
+
+## 五、视觉风格与禁忌
+
+不适用：客户没有提供品牌手册中的禁用规范，官网也没有公开
+
+## 六、对三个方向的约束
+
+强调色只用 #00B4D8；Logo 周围留出一个字高的空白
+"""
+
+
+class TestBrand(unittest.TestCase):
+    def setUp(self):
+        self.p = Project(outline())
+
+    def tearDown(self):
+        self.p.close()
+
+    def write(self, text):
+        os.makedirs(os.path.join(self.p.dir, E.D_DIRS), exist_ok=True)
+        open(brand.path(self.p.dir), 'w', encoding='utf-8').write(text)
+
+    def test_missing_and_template(self):
+        self.assertTrue(any('还没有品牌调研' in e for e in brand.check(self.p.dir)))
+        self.write(brand.template(self.p.dir))
+        errs = brand.check(self.p.dir)
+        self.assertEqual(len(errs), 6)                                    # every section still holds only its hint
+
+    def test_complete(self):
+        self.write(BRAND_DONE)
+        self.assertEqual(brand.check(self.p.dir), [])
+
+    def test_colour_and_source_rules(self):
+        self.write(BRAND_DONE.replace('#0E2A47', '深蓝').replace('#00B4D8', '青色'))
+        self.assertTrue(any('色值' in e for e in brand.check(self.p.dir)))
+        self.write(BRAND_DONE.replace('不适用：客户没有提供品牌手册中的禁用规范，官网也没有公开', '不适用'))
+        self.assertTrue(any('没有写理由' in e for e in brand.check(self.p.dir)))
+
+    def test_materials(self):
+        d = os.path.join(self.p.dir, E.D_DIRS, brand.MAT_DIR)
+        os.makedirs(os.path.join(d, '导出'))
+        open(os.path.join(d, 'vi.pdf'), 'w').close()
+        open(os.path.join(d, '导出', 'vi-1.png'), 'w').close()                # exported pages are not materials
+        E.update_project(self.p.dir, brand_materials=['../shot.png'])
+        names = [os.path.basename(m) for m in brand.materials(self.p.dir)]
+        self.assertEqual(names, ['vi.pdf', 'shot.png'])
+
+
+class TestLogo(unittest.TestCase):
+    def setUp(self):
+        try:
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            self.skipTest('Pillow not installed')
+        import logo
+        self.logo = logo
+        self.d = tempfile.mkdtemp(prefix='did_logo_')
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def img(self, name, ink, bg=None, size=(200, 80), dot=None):
+        from PIL import Image, ImageDraw
+        im = Image.new('RGBA', size, bg or (0, 0, 0, 0))
+        dr = ImageDraw.Draw(im)
+        dr.rectangle((20, 20, size[0] - 20, size[1] - 20), fill=ink)
+        if dot:
+            dr.ellipse((25, 25, 45, 45), fill=dot)
+        p = os.path.join(self.d, name); im.save(p)
+        return p
+
+    def test_white_logo_gets_a_light_background_version(self):
+        p = self.img('w.png', (255, 255, 255, 255), dot=(230, 180, 20, 255))
+        lt, dk, note = self.logo.versions(p, self.d, (101, 101, 101))
+        self.assertIn('反白', note)
+        self.assertEqual(lt.getpixel((lt.width // 2, lt.height - 5))[:3], (101, 101, 101))
+        self.assertEqual(lt.getpixel((12, 12))[:3], (230, 180, 20))            # coloured dot kept
+        self.assertEqual(dk.getpixel((dk.width // 2, dk.height - 5))[:3], (255, 255, 255))
+
+    def test_opaque_white_background_removed_and_pair(self):
+        a = self.img('a.png', (40, 40, 40, 255), bg=(255, 255, 255, 255))
+        b = self.img('b.png', (255, 255, 255, 255))
+        lt, dk, note = self.logo.versions('a.png::b.png', self.d, (101, 101, 101))
+        self.assertEqual(lt.size, (161, 41))                                  # trimmed to the ink
+        self.assertIn('两个版本', note)
+
+    def test_lockup_balances_area(self):
+        from PIL import Image
+        wide = Image.new('RGBA', (300, 100), (0, 0, 0, 255))
+        tall = Image.new('RGBA', (120, 120), (0, 0, 0, 255))
+        out = self.logo.lockup([tall, wide], (160, 160, 160), height=200)
+        self.assertEqual(out.height, 200 // 1)
+        self.assertGreater(out.width, 400)
 
 
 class TestRefs(unittest.TestCase):
@@ -206,6 +327,120 @@ class TestHumanize(unittest.TestCase):
         self.assertEqual(humanize.parse(md), {'p01.01': '甲', 'p01.02': '第一段\n第二段', 'p02.01': '乙'})
 
 
+def planned(n_content, skeletons, structures=None):
+    """Cover + n_content content pages + closing, each with a visual brief."""
+    structures = structures or ['flow'] * n_content
+    pages = [{'id': 'p01', 'kind': 'cover', 'title': '封面',
+              'visual': {'message': 'm', 'structure': 'claim', 'form': 'f0', 'focal': 'x', 'skeleton': 'hero'}}]
+    for i in range(n_content):
+        pages.append({'id': 'p%02d' % (i + 2), 'kind': 'content', 'title': '内容 %d' % i,
+                      'blocks': [{'type': 'bullets', 'items': ['甲', '乙'], 'visual': '两个节点'}],
+                      'visual': {'message': 'm', 'structure': structures[i], 'form': 'f%d' % (i + 1), 'focal': 'x',
+                                 'skeleton': skeletons[i]}})
+    pages.append({'id': 'p%02d' % (n_content + 2), 'kind': 'closing', 'title': '封底',
+                  'visual': {'message': 'm', 'structure': 'claim', 'form': 'fz', 'focal': 'x', 'skeleton': 'hero'}})
+    return {'title': 't', 'pages': pages}
+
+
+class TestVisual(unittest.TestCase):
+    def test_pass(self):
+        errs, warns = visual.check(planned(4, ['split', 'diagram', 'cards', 'bignum'], ['flow', 'loop', 'roles', 'kpi']))
+        self.assertEqual(errs, [])
+        self.assertEqual(warns, [])
+
+    def test_missing_brief(self):
+        o = planned(2, ['split', 'diagram'])
+        del o['pages'][1]['visual']
+        o['pages'][2]['visual'].pop('focal')
+        errs = visual.check(o)[0]
+        self.assertTrue(any('p02 没有视觉规划' in e for e in errs))
+        self.assertTrue(any('p03 的视觉规划缺少：视觉焦点' in e for e in errs))
+
+    def test_unknown_values(self):
+        o = planned(2, ['split', 'grid'], ['flow', 'story'])
+        errs = visual.check(o)[0]
+        self.assertTrue(any('skeleton「grid」' in e for e in errs))
+        self.assertTrue(any('structure「story」' in e for e in errs))
+
+    def test_neighbours_and_overuse(self):
+        errs = visual.check(planned(3, ['split', 'split', 'diagram']))[0]
+        self.assertTrue(any('p02 与 p03 相邻' in e for e in errs))
+        errs = visual.check(planned(2, ['split', 'hero']))[0]
+        self.assertTrue(any('p03 与 p04 相邻' in e for e in errs))          # last content page vs the closing page
+        errs = visual.check(planned(8, ['cards', 'split'] * 4))[0]          # 8 content pages: at most 2 per skeleton
+        self.assertTrue(any('「并列卡片」用了 4 页' in e and '最多 2 页' in e for e in errs))
+        warns = visual.check(planned(2, ['split', 'diagram'], ['flow', 'flow']))[1]
+        self.assertTrue(any('信息结构相同' in w for w in warns))
+
+    def test_repeated_motif(self):
+        o = planned(3, ['split', 'diagram', 'bignum'], ['flow', 'loop', 'kpi'])
+        for pg, m in zip(o['pages'][1:4], ['枕头切面', '枕头切面', '无照片']):
+            pg['visual']['motif'] = m
+        o['pages'][4]['visual']['motif'] = '无照片，纯排版'
+        warns = visual.check(o)[1]
+        self.assertEqual([w for w in warns if '配图母题' in w], ['p02 与 p03 的配图母题相同'])
+
+    def test_list_fallback_is_capped(self):
+        errs = visual.check(planned(4, ['split', 'diagram', 'cards', 'bignum'], ['list', 'list', 'flow', 'kpi']))[0]
+        self.assertTrue(any('并列要点' in e for e in errs))
+
+    def test_project_limits(self):
+        o = planned(2, ['split', 'diagram'])
+        o['pages'][2]['kind'] = 'section'
+        errs = visual.check(o, {'max_pages': 3, 'section_pages': False})[0]
+        self.assertTrue(any('max_pages' in e for e in errs))
+        self.assertTrue(any('章节页' in e for e in errs))
+
+    def test_relative_logo_paths(self):
+        d = tempfile.mkdtemp(prefix='did_logo_')
+        try:
+            json.dump({'logos': [{'light': 'logo/l.png', 'dark': '/abs/d.png'}]}, open(os.path.join(d, 'project.json'), 'w'))
+            lg = E.load_project(d)['logos'][0]
+            self.assertEqual(lg['light'], os.path.join(d, 'logo', 'l.png'))
+            self.assertEqual(lg['dark'], '/abs/d.png')
+            E.update_project(d, note='x')                                   # saving keeps the relative path
+            self.assertEqual(json.load(open(os.path.join(d, 'project.json')))['logos'][0]['light'], 'logo/l.png')
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_brief_does_not_touch_approval(self):
+        o = planned(2, ['split', 'diagram'])
+        sig = E.text_signature(o)
+        o['pages'][1]['visual']['form'] = '改过'
+        o['pages'][1]['blocks'][0]['visual'] = '改过'
+        self.assertEqual(sig, E.text_signature(o))
+
+    def test_prompt(self):
+        o = planned(3, ['split', 'diagram', 'bignum'], ['flow', 'loop', 'kpi'])
+        cfg = E.load_project(tempfile.mkdtemp(prefix='did_cfg_'))
+        d = {'name': 'D', 'light': 'Background: #FFFFFF', 'dark': 'Background: #000000', 'tone': {'content': 'light'}}
+        tone, text = build_prompts.build(cfg, o, o['pages'][2], 3, len(o['pages']), d)
+        self.assertIn('Draw it as: f2', text)
+        self.assertIn('closed loop', text)
+        self.assertIn('the previous slide (2) is two panels side by side', text)
+        self.assertIn('the next slide (4) is one to three very large numbers', text)
+        self.assertIn('Group 1 — draw as: 两个节点', text)
+        self.assertIn('Diagram logic', text)
+        quoted = re.findall(r'^\s*- [^:]+: "(.*)"$', text, re.M)
+        self.assertEqual(quoted, [s for _, s in E.page_strings(o['pages'][2])])
+
+
+class TestTextcheck(unittest.TestCase):
+    def test_wrapped_in_column(self):
+        try:
+            import textcheck
+        except ImportError:
+            self.skipTest('Pillow not installed')
+        box = lambda t, x0, y0: {'text': t, 'x0': x0, 'y0': y0, 'x1': x0 + 20 * len(t), 'y1': y0 + 34}
+        lines = [box('约 10 万元，选款对照、', 70, 664), box('只给回搜率与商品访问', 440, 664),
+                 box('调节演示、品牌核验、', 70, 703), box('跑赢的笔记加投，', 440, 698),
+                 box('横评与售后四类', 70, 739), box('没有笔记跑赢就不投', 440, 737)]
+        s = '约 10 万元，选款对照、调节演示、品牌核验、横评与售后四类'
+        texts = [L['text'] for L in lines]
+        self.assertLess(textcheck.best_ratio(s, texts), 0.8)                     # OCR order interleaves the columns
+        self.assertEqual(textcheck.best_ratio(s, texts, textcheck.column_stacks(lines)), 1.0)
+
+
 class TestHostos(unittest.TestCase):
     def test_runtime_paths(self):
         self.assertTrue(hostos.VENV_PY.startswith(hostos.RUNTIME))
@@ -263,8 +498,9 @@ class TestPackage(unittest.TestCase):
                 compile(open(f, encoding='utf-8').read(), f, 'exec')
 
     def test_no_client_material(self):
-        names = [''.join(map(chr, cs)) for cs in ([0x68a6, 0x91d1, 0x56ed], [0x4e2d, 0x5174])]   # client names
-        banned = re.compile('|'.join(names + ['/Us' + 'ers/']))                                  # and personal paths
+        names = [''.join(map(chr, cs)) for cs in ([0x68a6, 0x91d1, 0x56ed], [0x4e2d, 0x5174], [0x8d5b, 0x8bfa])]   # client names
+        names.append('S' + 'inomax')
+        banned = re.compile('|'.join(names + ['/Us' + 'ers/']), re.I)                             # and personal paths
         for f in glob.glob(os.path.join(ROOT, '**', '*'), recursive=True):
             f = f.replace(os.sep, '/')
             if '/private/' in f or '/.git/' in f or '__pycache__' in f or not os.path.isfile(f) or f.endswith(('.png', '.jpg')):

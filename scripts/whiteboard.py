@@ -9,7 +9,8 @@ this refuses to run; then punct.py tidies the full stops in outline.json (titles
 标点整理.md); --no-punct skips the punctuation step.
 
 Every slide: black text on white, thin grey rules, 微软雅黑 for Chinese and Arial for Latin/digits.
-The font size of each slide is chosen so its content fits; layout and imagery hints go to the notes.
+The font size of each slide is chosen so its content fits; the visual brief, layout and imagery hints go to the notes.
+After rendering, visual.py checks the per-slide visual plan and writes 视觉规划.md (reported here, enforced by deck prompts).
 """
 import os, sys, math, json
 from PIL import ImageFont
@@ -211,6 +212,11 @@ def render_page(prs, page, n, total):
             textbox(s, ML, 6.75, CW - 1.0, 0.3, [[(page['footnote'], 9, False, GREY)]])
     textbox(s, W_IN - MR - 1.0, 7.05, 1.0, 0.25, [[('%d / %d' % (n, total), 9, False, GREY)]], align=PP_ALIGN.RIGHT)
     notes = []
+    v = page.get('visual') if isinstance(page.get('visual'), dict) else {}
+    if v:
+        notes.append('【视觉】%s｜%s｜%s｜焦点：%s｜%s' % (
+            v.get('message', ''), E.STRUCTURES.get(v.get('structure'), (v.get('structure', ''),))[0], v.get('form', ''),
+            v.get('focal', ''), E.SKELETONS.get(v.get('skeleton'), (v.get('skeleton', ''),))[0]))
     if page.get('layout_hint'):
         notes.append('【版面建议】' + page['layout_hint'])
     if page.get('image_hint'):
@@ -229,6 +235,11 @@ def outline_md(outline):
         for role, t in E.page_strings(p):
             if role != 'title':
                 out.append('- %s：%s' % (role, t))
+        v = p.get('visual') if isinstance(p.get('visual'), dict) else {}
+        if v:
+            out.append('> 视觉：%s；%s；%s；焦点：%s；构图：%s' % (
+                v.get('message', ''), E.STRUCTURES.get(v.get('structure'), (v.get('structure', ''),))[0], v.get('form', ''),
+                v.get('focal', ''), E.SKELETONS.get(v.get('skeleton'), (v.get('skeleton', ''),))[0]))
         for k, lab in (('layout_hint', '版面建议'), ('image_hint', '配图建议'), ('notes', '讲稿')):
             if p.get(k):
                 out.append('> %s：%s' % (lab, p[k]))
@@ -263,6 +274,13 @@ def main():
         changes, _, mixed = punct.run(proj)
         print('标点整理：去掉 %d 处句号%s' % (len(changes), '；%d 个列表句号不统一，见 00_白板稿/标点整理.md' % len(mixed) if mixed else ''))
     print(render(proj))
+    import visual
+    errs, warns, plan = visual.run(proj)
+    for w in warns:
+        print('视觉规划提示：' + w)
+    for e in errs:
+        print('视觉规划 ✗ ' + e)
+    print('%s（%s）' % (plan, '未通过，deck prompts 会拒绝运行' if errs else '通过'))
     print('下一步：把白板稿发给用户确认（确认点 1），同时用 deck refs 找视觉参考一并询问；用户确认后运行 deck approve。')
 
 if __name__ == '__main__':

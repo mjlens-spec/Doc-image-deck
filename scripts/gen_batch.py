@@ -7,7 +7,8 @@ Usage: gen_batch.py <prompts_dir> --out <raw_dir> [--pages p01,p02] [--ref-light
 Each page is one `codex exec` call (scripts/imagegen.py); about 2 minutes per image, 4 in parallel is stable.
 Outputs <raw_dir>/pNN_vK.png (K = next free version), appends to gen_log.json and points selected.json at the
 newest successful version of every page generated in this run.
-Style references are optional: pages use --ref-dark or --ref-light by their tone in index.json. When the direction
+Style references are optional: pages use --ref-dark or --ref-light by their tone in index.json; the note in front of
+the prompt limits them to style, so the pages do not copy the sample's composition. When the direction
 was built from a user's reference (<prompts_dir>/direction.json "refs"), those images are attached as well, up to
 three images per call.
 """
@@ -17,8 +18,9 @@ from concurrent.futures import ThreadPoolExecutor
 HERE = os.path.dirname(os.path.abspath(__file__))
 IMAGEGEN = os.path.join(HERE, 'imagegen.py')
 REF_NOTE = ('The attached image(s) are STYLE REFERENCES ONLY: match their colour palette, typography and type weights, header '
-            'treatment, margins, rules, imagery treatment and overall finish. Do NOT copy their text, their content or their '
-            'exact layout; compose this slide as described below.\n\n')
+            'treatment, margins, rules, imagery treatment and overall finish. Do NOT copy their text, their content, their '
+            'composition, their diagram type or their picture subject: they are other slides of the same deck, and this slide '
+            'must look different from them. Compose this slide as described below.\n\n')
 MAX_REFS = 3
 
 def next_version(raw, pid):

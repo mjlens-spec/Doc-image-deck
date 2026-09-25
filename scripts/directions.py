@@ -3,7 +3,8 @@
 
 Usage: directions.py <project>
 Reads 01_设计方向/*/direction.json (schema: references/02_设计方向与生图.md) and checks:
-  - exactly three directions;
+  - the brand VI research 01_设计方向/品牌调研.md is complete (brand.py);
+  - exactly three directions, each with "brand_fit" (how it uses the brand colours, logo and style);
   - required fields, an imagery_mode from deckenv.IMAGERY_MODES, and for source "reference" at least one existing
     image in refs (paths relative to the direction.json folder or absolute);
   - the three directions are entirely different: every dims entry (typeface, palette, layout, imagery, texture)
@@ -13,8 +14,9 @@ Writes 01_设计方向/方向说明.md (one column per direction). Exit 1 when a
 import os, re, sys, json, glob, itertools
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import deckenv as E
+import brand
 
-REQUIRED = ['id', 'name', 'summary', 'source', 'light', 'dark', 'imagery', 'imagery_mode', 'dims', 'tone']
+REQUIRED = ['id', 'name', 'summary', 'source', 'brand_fit', 'light', 'dark', 'imagery', 'imagery_mode', 'dims', 'tone']
 
 
 def key(s):
@@ -84,6 +86,7 @@ def comparison(dirs):
     rows = [('一句话', [d.get('summary', '') for d in dirs]),
             ('来源', ['用户参考（%s）' % '、'.join(os.path.basename(r) for r in ref_paths(d)) if d.get('source') == 'reference'
                     else '自行设计' for d in dirs])]
+    rows.append(('品牌呼应', [d.get('brand_fit', '') for d in dirs]))
     rows += [(lab, [(d.get('dims') or {}).get(k, '') for d in dirs]) for k, lab in E.DIMS]
     rows.append(('配图方式', [E.IMAGERY_MODES.get(d.get('imagery_mode'), ('',))[0] for d in dirs]))
     rows.append(('明暗', ['、'.join('%s %s' % ({'cover': '封面', 'section': '章节', 'content': '内容', 'closing': '封底'}.get(k, k),
@@ -99,6 +102,7 @@ def main():
     proj = os.path.abspath(sys.argv[1])
     dirs = load(proj)
     errs, warns = check(dirs)
+    errs = brand.check(proj) + errs
     for w in warns:
         print('提示：' + w)
     for e in errs:

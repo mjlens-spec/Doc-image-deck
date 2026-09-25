@@ -1,4 +1,4 @@
 interface:
   display_name: "文图方案 Doc-image-deck"
-  short_description: "文档 → 去 AI 味白板稿 → 三个设计方向 → 整页生图 → 图文版 → 可编辑 PPTX"
-  default_prompt: "使用 $doc-image-deck 把这份文档做成文图方案：先用 humanizer-zh 去掉文案的 AI 腔，出白板稿给我确认，并问我有没有视觉参考；再出三个完全不同的设计方向样张让我选，然后全量生图、加 Logo 和页码合成图文版，最后还原成可编辑的 PowerPoint。"
+  short_description: "文档 → 去 AI 味白板稿与逐页视觉规划 → 品牌调研 → 三个设计方向 → 整页生图 → 图文版 → 可编辑 PPTX"
+  default_prompt: "使用 $doc-image-deck 把这份文档做成文图方案：先用 humanizer-zh 去掉文案的 AI 腔，出带逐页视觉规划的白板稿给我确认，并向我要视觉参考、品牌材料和 Logo；再做品牌 VI 与 Logo 调研，出三个完全不同的设计方向样张让我选，然后全量生图、加 Logo 和页码合成图文版，最后还原成可编辑的 PowerPoint。"
