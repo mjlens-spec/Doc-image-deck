@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 - 2026-09-25
+
+去 AI 味工序、Windows 支持，以及生图模型的调研结论。
+
+- 去 AI 味：新增 `scripts/humanize.py`（`deck humanize`）。白板稿文案（上屏文字与讲稿）导出为带编号标记的 `文案_原稿.md`，按 [humanizer-zh](https://github.com/op7418/Humanizer-zh) 编辑后导入；导入时核对标记、数字、英文和引号内文字，改动记入 `去AI味记录.md`。`deck whiteboard` 在有文案未处理时拒绝运行；`--changed` 只导出改过的条目，`accept` 记录用户指定原话的条目
+- Windows 10 22H2 / 11：新增 `scripts/hostos.py` 集中处理平台差异。文字识别用 RapidOCR（PP-OCRv6，`scripts/ocr_rapid.py`，输出与 Apple Vision 工具同一格式）；PDF 渲染与抽图用 pypdfium2；PowerPoint 通过 COM 驱动；思源宋体按字重生成静态字体并为当前用户安装（`scripts/fontsetup.py`）；LaMa 支持 CUDA
+- 命令入口改为 `scripts/deck.py`，macOS 用 `scripts/deck`、Windows 用 `scripts\deck.cmd` 启动，全部以 UTF-8 模式运行；`setup.sh`、`install.sh`、`run_editable.sh`、`run_pages.sh` 改写为 Python（`setup.py`、`install.py`、`editable/run_editable.py`、`editable/run_pages.py`）。Windows 上 skill 链接用目录联接，不需要管理员权限
+- `deck setup` 在各 skills 目录都没有 humanizer-zh 时自动下载安装
+- `imagegen.py`：提示词改由标准输入传给 Codex（Windows 的 `codex.cmd` 启动器会截断多行参数），按完整路径启动 Codex
+- 测试：新增 `tests/pipeline_smoke.py`（合成页面走完抽页、识别、拟合、LaMa、装配）；CI 增加 Windows 单元测试，以及 Windows 上完整安装运行环境后的冒烟测试
+- 调研：Codex 内置 `image_gen` 客户端请求 `gpt-image-2`、不能选模型；Images 2.5 的 API 模型为 `gpt-image-2.5-flare` / `sunburst`；网页版自动化违反 OpenAI 使用条款，不采用。结论写入 README「关于生图模型」
+
 ## 1.0.0 - 2026-09-25
 
 首次公开发布。改名为 Doc-image-deck，中文名「文图方案」（skill 名 `doc-image-deck`），并加入四项规则。

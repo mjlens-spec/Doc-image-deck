@@ -7,16 +7,11 @@ Usage:
 """
 import os, sys, json, argparse
 from PIL import Image, ImageDraw, ImageFont
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hostos
 
 def font(size):
-    for p in ('~/Library/Fonts/NotoSansCJKsc-Bold.otf', '~/Library/Fonts/msyh.ttc', '/System/Library/Fonts/Supplemental/Songti.ttc'):
-        p = os.path.expanduser(p)
-        if os.path.exists(p):
-            try:
-                return ImageFont.truetype(p, size)
-            except Exception:
-                pass
-    return ImageFont.load_default()
+    return hostos.ui_font(size, bold=True)
 
 def sheet(items, out, cols, width):
     """Each tile: a label strip above the image, so the label never hides page content."""

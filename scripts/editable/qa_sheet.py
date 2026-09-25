@@ -3,22 +3,20 @@
 Usage: qa_sheet.py <workdir> <deck.pdf> <out_prefix> [pages_per_sheet]
 """
 import os, sys, glob, re, json, subprocess
+sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import hostos as H
 from PIL import Image, ImageDraw, ImageFont
 work, pdf, prefix = sys.argv[1:4]
 per = int(sys.argv[4]) if len(sys.argv) > 4 else 8
 man = json.load(open(os.path.join(work, 'manifest.json')))
 rd = os.path.join(work, 'tmp', 'sheet'); os.makedirs(rd, exist_ok=True)
 for f in glob.glob(os.path.join(rd, 's-*.png')): os.remove(f)
-subprocess.run(['pdftoppm', '-png', '-scale-to-x', '960', '-scale-to-y', '540', pdf, os.path.join(rd, 's')], check=True)
+H.render_pdf(pdf, os.path.join(rd, 's'), size=(960, 540))
 rs = sorted(glob.glob(os.path.join(rd, 's-*.png')), key=lambda f: int(re.findall(r'-(\d+)\.png', f)[0]))
 diff = {}
 dj = os.path.join(work, '03_QA', 'diff.json')
 if os.path.exists(dj):
     diff = json.load(open(dj)).get('diff', {})
-try:
-    lab = ImageFont.truetype(os.path.expanduser('~/Library/Fonts/NotoSansCJKsc-Regular.otf'), 22)
-except Exception:
-    lab = None
+lab = H.ui_font(22)
 pages = man['pages']
 outs = []
 for k in range(0, len(pages), per):

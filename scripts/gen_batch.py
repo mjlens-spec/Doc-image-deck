@@ -37,7 +37,8 @@ def run_one(job):
         for r in refs:
             cmd += ['--ref', r]
         t0 = time.time()
-        p = subprocess.run(cmd, input=prompt, capture_output=True, text=True)
+        p = subprocess.run(cmd, input=prompt, capture_output=True, text=True, encoding='utf-8', errors='replace',
+                           env=dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8'))
         ok = p.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 50000
         print('%s attempt %d rc=%d %s %.0fs' % (os.path.basename(out), attempt, p.returncode, 'OK' if ok else 'FAIL', time.time() - t0), flush=True)
         if ok:

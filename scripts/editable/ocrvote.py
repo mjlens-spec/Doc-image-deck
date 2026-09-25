@@ -11,8 +11,8 @@ BULLETS = set('•·◆◇。●○')
 def _k(c):
     return EQUIV.get(c, c)
 
-def crop_readings(img, segs, ocr_bin, scales=(1.0, 1.6), pad_right=0.6):
-    """Return, per segment, a list of crop readings (text only, spaces removed)."""
+def crop_readings(img, segs, ocr_cmd, scales=(1.0, 1.6), pad_right=0.6):
+    """Return, per segment, a list of crop readings (text only, spaces removed). ocr_cmd: hostos.ocr_cmd()."""
     tmp = tempfile.mkdtemp(prefix='ocrv_')
     jobs = []
     W, H = img.size
@@ -27,8 +27,10 @@ def crop_readings(img, segs, ocr_bin, scales=(1.0, 1.6), pad_right=0.6):
             fn = os.path.join(tmp, '%d_%.1f.png' % (i, sc)); c.save(fn, compress_level=1)
             # target band in crop coords
             jobs.append((i, fn, ((x0 - box[0]) * sc, (y0 - box[1]) * sc, (x1 - box[0]) * sc, (y1 - box[1]) * sc)))
-    lst = os.path.join(tmp, 'list.txt'); open(lst, 'w').write('\n'.join(j[1] for j in jobs))
-    out = subprocess.run([ocr_bin, '--batch', lst], capture_output=True, text=True).stdout
+    lst = os.path.join(tmp, 'list.txt'); open(lst, 'w', encoding='utf-8').write('\n'.join(j[1] for j in jobs))
+    cmd = list(ocr_cmd) if isinstance(ocr_cmd, (list, tuple)) else [ocr_cmd]
+    env = dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
+    out = subprocess.run(cmd + ['--batch', lst], capture_output=True, text=True, encoding='utf-8', env=env).stdout
     res = json.loads(out or '{}')
     reads = [[] for _ in segs]
     for i, fn, (tx0, ty0, tx1, ty1) in jobs:

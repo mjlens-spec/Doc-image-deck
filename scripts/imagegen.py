@@ -62,6 +62,8 @@ def main():
     ap.add_argument("--overwrite", action="store_true", help="覆盖已存在的输出文件")
     a = ap.parse_args()
 
+    if a.prompt == "-":
+        sys.stdin.reconfigure(encoding="utf-8")
     prompt = sys.stdin.read() if a.prompt == "-" else a.prompt
     if not prompt.strip():
         die("提示词为空")
@@ -78,16 +80,18 @@ def main():
         print(f"imagegen: 输出统一为 PNG，改存为 {out.name}", file=sys.stderr)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    if not shutil.which("codex"):
+    # Windows 上 npm 装的是 codex.cmd，只能按完整路径启动
+    codex = shutil.which("codex")
+    if not codex:
         die("未找到 codex 命令")
     # 只允许 ChatGPT 登录，避免误走 API 计费
     env = {k: v for k, v in os.environ.items() if k not in ("OPENAI_API_KEY", "OPENAI_BASE_URL")}
-    status = subprocess.run(["codex", "login", "status"], capture_output=True, text=True, env=env)
+    status = subprocess.run([codex, "login", "status"], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     if "ChatGPT" not in status.stdout + status.stderr:
         die("Codex 未以 ChatGPT 账号登录，已停止以免产生 API 费用。请先运行 codex login")
 
     cmd = [
-        "codex", "exec", "--json",
+        codex, "exec", "--json",
         "-s", "read-only",
         "--skip-git-repo-check",
         # 不加载 config.toml 里的 MCP、hooks 等，缩短启动时间、减少上下文；登录仍用 CODEX_HOME
@@ -97,13 +101,13 @@ def main():
     ]
     for r in refs:
         cmd += ["-i", str(r)]
-    # -i 是变长参数，必须用 -- 隔开提示词
-    cmd += ["--", build_instruction(prompt, a.size, bool(refs))]
+    # -i 是变长参数，必须用 -- 隔开；提示词用 - 从标准输入传入（Windows 的 .cmd 启动器会截断多行参数）
+    cmd += ["--", "-"]
 
     try:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, env=env,
-            stdin=subprocess.DEVNULL, timeout=a.timeout,
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+            input=build_instruction(prompt, a.size, bool(refs)), timeout=a.timeout,
         )
     except subprocess.TimeoutExpired:
         die(f"{a.timeout} 秒内未完成，可调大 --timeout", 124)
@@ -124,7 +128,7 @@ def main():
     # --json 事件流不含生图记录；按会话 ID 读会话日志，只取本次会话的图，不跨会话按时间猜
     saved, failures = [], []
     for rollout in CODEX_HOME.glob(f"sessions/*/*/*/rollout-*{thread_id}.jsonl"):
-        for line in rollout.open(errors="ignore"):
+        for line in rollout.open(encoding="utf-8", errors="ignore"):
             if "image_gen" not in line:
                 continue
             try:

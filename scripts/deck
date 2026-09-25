@@ -1,56 +1,8 @@
-#!/bin/zsh
-# Doc-image-deck（文图方案）entry point. usage: deck <command> [args]   (deck help)
-S=${0:A:h}
-RUNTIME=${DOC_IMAGE_DECK_HOME:-$HOME/.local/share/doc-image-deck}
-PY=$RUNTIME/venv/bin/python
-export PYTHONDONTWRITEBYTECODE=1          # keep the installed skill folder free of __pycache__
-cmd=$1; (( $# )) && shift
-need_py() { [[ -x $PY ]] || { echo "运行环境未安装：请先运行 $S/setup.sh"; exit 3; } }
-case $cmd in
-  check)        exec zsh "$S/setup.sh" --check ;;
-  setup)        exec zsh "$S/setup.sh" "$@" ;;
-  whiteboard)   need_py; exec $PY "$S/whiteboard.py" "$@" ;;
-  punct)        need_py; exec $PY "$S/punct.py" "$@" ;;
-  approve)      need_py; exec $PY "$S/approve.py" "$@" ;;
-  refs)         need_py; exec $PY "$S/refs.py" "$@" ;;
-  directions)   need_py; exec $PY "$S/directions.py" "$@" ;;
-  prompts)      need_py; exec $PY "$S/build_prompts.py" "$@" ;;
-  gen)          need_py; exec $PY "$S/gen_batch.py" "$@" ;;
-  textcheck)    need_py; exec $PY "$S/textcheck.py" "$@" ;;
-  sheet)        need_py; exec $PY "$S/contact_sheet.py" "$@" ;;
-  compose)      need_py; exec $PY "$S/compose.py" "$@" ;;
-  pdf)          need_py; exec $PY "$S/editable/pptrender.py" "$@" ;;
-  editable)     need_py; PY=$PY exec zsh "$S/editable/run_editable.sh" "$@" ;;
-  layers)       need_py; PY=$PY exec zsh "$S/editable/run_pages.sh" "$@" ;;
-  build)        need_py; exec $PY "$S/editable/build_pptx.py" "$@" ;;
-  verify)       need_py; exec $PY "$S/editable/verify.py" "$@" ;;
-  review)       need_py; exec $PY "$S/editable/review_grid.py" "$@" ;;
-  proof)        need_py; exec $PY "$S/editable/proof_sheet.py" "$@" ;;
-  zoom)         need_py; exec $PY "$S/editable/zoomcmp.py" "$@" ;;
-  qasheet)      need_py; exec $PY "$S/editable/qa_sheet.py" "$@" ;;
-  report)       need_py; exec $PY "$S/editable/report.py" "$@" ;;
-  draftdiff)    need_py; exec $PY "$S/editable/draft_diff.py" "$@" ;;
-  cleanup)      need_py; exec $PY "$S/cleanup.py" "$@" ;;
-  imagegen)     exec python3 "$S/imagegen.py" "$@" ;;
-  *) cat <<'H'
-deck check                                   检查运行环境
-deck setup [--no-fonts] [--no-calib]         安装 / 修复运行环境
-deck whiteboard <项目> [--no-punct]           阶段 1：标点整理 + outline.json → 白板稿 PPTX
-deck punct <项目> [--check]                    标点整理：标题和短句去句号，详细描述保留
-deck refs <项目> [目录 ...]                     找本地视觉参考候选（确认点 1 一并询问用户）
-deck refs <项目> --export R03|文件 [--pages 1,4] --to <目录>   把选定参考导出为图片
-deck approve <项目> [--note 意见] | --status    记录用户已确认白板稿（生图前必须）
-deck directions <项目>                         检查三个方向是否完全不同，写方向说明.md
-deck prompts <项目> --direction <方向.json> --out <目录> [--pages p01,p05]
-deck gen <提示词目录> --out <生图目录> [--pages ..] [--ref-light 图] [--ref-dark 图] [--parallel 4]
-deck textcheck <项目> <提示词目录> <生图目录>     生图文字与预留角落核对
-deck sheet <输出.jpg> 标签=图 ... | deck sheet <输出前缀> --raw <生图目录>
-deck compose <项目>                           阶段 3：图文版 PPTX + PDF
-deck editable <工作目录> <图文版.pptx> <输出.pptx> [--outline outline.json] [--ref 图文版.pdf]
-deck layers|build|verify|review|proof|zoom|qasheet|report|draftdiff ...   阶段 4 分步命令
-deck pdf <deck.pptx> [out.pdf]                用 PowerPoint 导出 PDF
-deck cleanup <项目> [--dry-run] [--deep]       阶段 5：清理中间文件
-deck imagegen "<提示词>" -o out.png [--ref 图] 单张生图（Codex 内置 image_gen）
-H
-  ;;
-esac
+#!/bin/sh
+# Doc-image-deck（文图方案）launcher for macOS. usage: deck <command> [args]   (deck help)
+# Runs deck.py with the runtime's Python when it exists, otherwise with python3 (enough for check / setup).
+S=$(cd "$(dirname "$0")" && pwd)
+R=${DOC_IMAGE_DECK_HOME:-$HOME/.local/share/doc-image-deck}
+export PYTHONDONTWRITEBYTECODE=1 PYTHONUTF8=1
+if [ -x "$R/venv/bin/python" ]; then exec "$R/venv/bin/python" -X utf8 "$S/deck.py" "$@"; fi
+exec python3 -X utf8 "$S/deck.py" "$@"

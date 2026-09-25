@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
 """Shared paths and helpers for Doc-image-deck（文图方案）.
 
-Runtime (machine-level, created by setup.sh):  $DOC_IMAGE_DECK_HOME  (default ~/.local/share/doc-image-deck)
+Runtime (machine-level, created by setup.py):  $DOC_IMAGE_DECK_HOME  (default ~/.local/share/doc-image-deck on macOS,
+%LOCALAPPDATA%\\doc-image-deck on Windows); platform differences live in hostos.py
     venv/            Python environment
-    bin/ocrbox       macOS Vision OCR tool
+    bin/ocrbox       macOS Vision OCR tool (Windows: RapidOCR inside the venv)
+    fonts/           Windows: font files for fitting
     calibration.json PowerPoint text-placement calibration
 Project (one per deck):  <project>/project.json  plus the stage folders below.
 """
 import os, re, json, datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RUNTIME = os.path.expanduser(os.environ.get('DOC_IMAGE_DECK_HOME', '~/.local/share/doc-image-deck'))
-PY = os.path.join(RUNTIME, 'venv', 'bin', 'python')
-OCR_BIN = os.path.join(RUNTIME, 'bin', 'ocrbox')
-CALIB = os.path.join(RUNTIME, 'calibration.json')
+import hostos
+RUNTIME = hostos.RUNTIME
+PY = hostos.VENV_PY
+OCR_BIN = hostos.OCR_BIN
+CALIB = hostos.CALIB
 
 # stage folders inside a project
 D_WHITE = '00_白板稿'
@@ -156,9 +159,9 @@ def ensure_runtime(need_ocr=False, need_calib=False):
     miss = []
     if not os.path.exists(PY):
         miss.append('Python 环境 %s' % PY)
-    if need_ocr and not os.path.exists(OCR_BIN):
-        miss.append('OCR 工具 %s' % OCR_BIN)
+    if need_ocr and not hostos.ocr_ready():
+        miss.append('OCR 工具（macOS：%s；Windows：rapidocr）' % OCR_BIN)
     if need_calib and not os.path.exists(CALIB):
         miss.append('PowerPoint 标定 %s' % CALIB)
     if miss:
-        raise SystemExit('运行环境不完整：%s。请先运行 scripts/setup.sh' % '；'.join(miss))
+        raise SystemExit('运行环境不完整：%s。请先运行 deck setup' % '；'.join(miss))

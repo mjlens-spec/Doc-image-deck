@@ -4,10 +4,11 @@ every line whose three OCR readings disagree, plus optional extra lines matching
 Usage: proof_sheet.py <workdir> <out_prefix> [regex]"""
 import os, sys, json, re, difflib
 from PIL import Image, ImageDraw, ImageFont
+sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import hostos as H
 work, prefix = sys.argv[1], sys.argv[2]
 extra = re.compile(sys.argv[3]) if len(sys.argv) > 3 else None
 ALLOW = set(json.load(open(os.path.join(work, 'config.json'))).get('proof_allow', ''))
-f = ImageFont.truetype(os.path.expanduser('~/Library/Fonts/NotoSansCJKsc-Regular.otf'), 30)
+f = H.ui_font(30)
 def level1(c):
     try: b = c.encode('gb2312')
     except Exception: return False

@@ -8,25 +8,51 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUTF8: "1"          # Windows runners print through cp1252 otherwise
+
 jobs:
-  validate:
-    runs-on: ubuntu-latest
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install zsh
-        run: sudo apt-get update && sudo apt-get install --yes zsh
-
-      - name: Check shell scripts
-        run: for f in scripts/deck scripts/*.sh scripts/editable/*.sh; do zsh -n "$f"; done
-
+      - name: Check launcher syntax
+        if: runner.os == 'Linux'
+        run: sh -n scripts/deck
       - name: Run tests
-        run: python3 tests/run_tests.py
+        run: python tests/run_tests.py
+
+  windows-pipeline:
+    # Full setup on Windows (no PowerPoint or Codex on the runner), then the pipeline on a synthetic slide:
+    # PDF extraction, RapidOCR, font fitting, LaMa on the CPU, PPTX assembly, per-user font installation.
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install skill for Claude Code and Codex (junctions)
+        run: python scripts/install.py --no-setup
+      - name: Check skill links
+        shell: pwsh
+        run: |
+          foreach ($h in '.claude', '.codex') {
+            if (-not (Test-Path "$env:USERPROFILE\$h\skills\doc-image-deck\SKILL.md")) { throw "missing link in $h" }
+          }
+      - name: Set up runtime
+        shell: cmd
+        run: scripts\deck.cmd setup --no-calib || exit /b 0
+      - name: Check report
+        run: python tests/ci_check_report.py
+      - name: Pipeline smoke test
+        shell: pwsh
+        run: '& "$env:LOCALAPPDATA\doc-image-deck\venv\Scripts\python.exe" tests\pipeline_smoke.py'

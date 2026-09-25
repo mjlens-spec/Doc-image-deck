@@ -47,8 +47,9 @@ def main():
             top = os.path.join(proj, os.path.basename(f))
             if os.path.exists(top) and os.path.getsize(top) == os.path.getsize(f):
                 doomed.append(f)
-    stage = os.path.expanduser('~/Library/Containers/com.microsoft.Powerpoint/Data/tmp/deckrender')
-    doomed += glob.glob(os.path.join(stage, '*'))
+    import hostos
+    stage = hostos.ppt_stage_dir()
+    doomed += glob.glob(os.path.join(stage, '*')) if stage else []
     doomed = sorted(set(p for p in doomed if os.path.exists(p)))
     total = sum(size(p) for p in doomed)
     for p in doomed:

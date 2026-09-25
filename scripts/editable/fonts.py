@@ -4,33 +4,34 @@
 Each family maps weight -> (font file, variable-font wght or None, PowerPoint typeface, bold flag).
 Only weights verified to render correctly in PowerPoint for Mac are listed
 (Noto Serif SC variable: ExtraLight maps to the wrong instance in PowerPoint, so it is left out).
+PowerPoint for Windows gets static instances of the same weights, named exactly like the typefaces below.
 """
-import os
+import os, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import hostos
 
-def _fontdir(fn):
-    for d in ('~/Library/Fonts', '/Library/Fonts'):
-        if os.path.exists(os.path.join(os.path.expanduser(d), fn)):
-            return os.path.expanduser(d)
-    return os.path.expanduser('~/Library/Fonts')
-UF = _fontdir('NotoSerifSC-wght.ttf')
+def _ff(fn):
+    """Font file for FreeType fitting. On Windows the files live in <runtime>/fonts; PowerPoint uses the installed
+    static instances with the same typeface names (setup.py builds them from the variable Noto Serif SC)."""
+    return hostos.find_font(fn) or os.path.join(hostos.font_dirs()[0], fn)
 FAMILIES = {
     'serif': dict(label='思源宋体 Noto Serif SC', weights={
-        'Light':    (os.path.join(UF, 'NotoSerifSC-wght.ttf'), 300, 'Noto Serif SC Light', False),
-        'Regular':  (os.path.join(UF, 'NotoSerifSC-wght.ttf'), 400, 'Noto Serif SC', False),
-        'Medium':   (os.path.join(UF, 'NotoSerifSC-wght.ttf'), 500, 'Noto Serif SC Medium', False),
-        'SemiBold': (os.path.join(UF, 'NotoSerifSC-wght.ttf'), 600, 'Noto Serif SC SemiBold', False),
-        'Bold':     (os.path.join(UF, 'NotoSerifSC-wght.ttf'), 700, 'Noto Serif SC', True),
-        'Black':    (os.path.join(UF, 'NotoSerifSC-wght.ttf'), 900, 'Noto Serif SC Black', False),
+        'Light':    (_ff('NotoSerifSC-wght.ttf'), 300, 'Noto Serif SC Light', False),
+        'Regular':  (_ff('NotoSerifSC-wght.ttf'), 400, 'Noto Serif SC', False),
+        'Medium':   (_ff('NotoSerifSC-wght.ttf'), 500, 'Noto Serif SC Medium', False),
+        'SemiBold': (_ff('NotoSerifSC-wght.ttf'), 600, 'Noto Serif SC SemiBold', False),
+        'Bold':     (_ff('NotoSerifSC-wght.ttf'), 700, 'Noto Serif SC', True),
+        'Black':    (_ff('NotoSerifSC-wght.ttf'), 900, 'Noto Serif SC Black', False),
     }),
     'sans': dict(label='思源黑体 Noto Sans CJK SC', weights={
-        'Light':   (os.path.join(UF, 'NotoSansCJKsc-Light.otf'), None, 'Noto Sans CJK SC Light', False),
-        'DemiLight': (os.path.join(UF, 'NotoSansCJKsc-DemiLight.otf'), None, 'Noto Sans CJK SC DemiLight', False),
-        'Regular': (os.path.join(UF, 'NotoSansCJKsc-Regular.otf'), None, 'Noto Sans CJK SC', False),
-        'Medium':  (os.path.join(UF, 'NotoSansCJKsc-Medium.otf'), None, 'Noto Sans CJK SC Medium', False),
-        'Bold':    (os.path.join(UF, 'NotoSansCJKsc-Bold.otf'), None, 'Noto Sans CJK SC', True),
-        'Black':   (os.path.join(UF, 'NotoSansCJKsc-Black.otf'), None, 'Noto Sans CJK SC Black', False),
+        'Light':   (_ff('NotoSansCJKsc-Light.otf'), None, 'Noto Sans CJK SC Light', False),
+        'DemiLight': (_ff('NotoSansCJKsc-DemiLight.otf'), None, 'Noto Sans CJK SC DemiLight', False),
+        'Regular': (_ff('NotoSansCJKsc-Regular.otf'), None, 'Noto Sans CJK SC', False),
+        'Medium':  (_ff('NotoSansCJKsc-Medium.otf'), None, 'Noto Sans CJK SC Medium', False),
+        'Bold':    (_ff('NotoSansCJKsc-Bold.otf'), None, 'Noto Sans CJK SC', True),
+        'Black':   (_ff('NotoSansCJKsc-Black.otf'), None, 'Noto Sans CJK SC Black', False),
     }),
 }
 

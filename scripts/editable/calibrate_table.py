@@ -17,6 +17,7 @@ from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.oxml.ns import qn
 from lxml import etree
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import hostos as H
 from pptrender import ppt_to_pdf
 
 work = os.path.abspath(sys.argv[1])
@@ -51,7 +52,7 @@ for p in np.arange(6, 120.01, 0.25):
 pp = os.path.join(tmp, 'table.pptx'); prs.save(pp)
 pdf = ppt_to_pdf(pp, os.path.join(tmp, 'table.pdf'))
 DPI = 600; S = DPI / 72.0
-subprocess.run(['pdftoppm', '-png', '-r', str(DPI), pdf, os.path.join(tmp, 'c')], check=True)
+H.render_pdf(pdf, os.path.join(tmp, 'c'), dpi=DPI)
 pages = sorted(glob.glob(os.path.join(tmp, 'c-*.png')), key=lambda f: int(re.findall(r'-(\d+)\.png', f)[0]))
 cur, im = None, None
 offs = {}

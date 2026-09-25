@@ -4,8 +4,9 @@
 Usage: whiteboard.py <project> [--no-punct]
 Reads  <project>/00_白板稿/outline.json   (schema: references/01_白板稿.md)
 Writes <project>/00_白板稿/<name>_白板稿_<suffix>.pptx and outline.md (reading copy)
-Before rendering, punct.py tidies the full stops in outline.json (titles and short phrases lose them; see
-标点整理.md); --no-punct skips that step.
+Before rendering: every string must have been through the 去 AI 味 step (humanize.py, humanizer-zh), otherwise
+this refuses to run; then punct.py tidies the full stops in outline.json (titles and short phrases lose them; see
+标点整理.md); --no-punct skips the punctuation step.
 
 Every slide: black text on white, thin grey rules, 微软雅黑 for Chinese and Arial for Latin/digits.
 The font size of each slide is chosen so its content fits; layout and imagery hints go to the notes.
@@ -33,12 +34,9 @@ def text_em(s):
     """Width of s in em (CJK = 1, Latin/digits ≈ 0.55), measured with 微软雅黑 when available."""
     global _font
     if _font is None:
-        for p in ('~/Library/Fonts/msyh.ttc', '/Library/Fonts/msyh.ttc', '/System/Library/Fonts/Supplemental/Songti.ttc'):
-            p = os.path.expanduser(p)
-            if os.path.exists(p):
-                _font = ImageFont.truetype(p, 100); break
-        else:
-            _font = False
+        import hostos
+        p = hostos.find_font('msyh.ttc', 'msyh.ttf', 'Songti.ttc', 'simsun.ttc')
+        _font = ImageFont.truetype(p, 100) if p else False
     if _font:
         return _font.getlength(s) / 100.0
     return sum(1.0 if ord(c) > 0x2E80 else 0.55 for c in s)
@@ -254,6 +252,12 @@ def render(proj):
 def main():
     args = [x for x in sys.argv[1:] if not x.startswith('--')]
     proj = os.path.abspath(args[0])
+    import humanize
+    todo = humanize.pending(proj)
+    if todo:
+        raise SystemExit('还有 %d 条文案没有做去 AI 味处理（如 %s）。先运行 deck humanize <项目> export%s，按 humanizer-zh 处理后 import；'
+                         '用户指定原话的条目用 deck humanize <项目> accept --note "说明"。'
+                         % (len(todo), todo[0][0], ' --changed' if humanize.load_done(proj) else ''))
     if '--no-punct' not in sys.argv:
         import punct
         changes, _, mixed = punct.run(proj)

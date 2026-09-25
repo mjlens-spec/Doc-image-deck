@@ -11,6 +11,7 @@ import os, sys, json, subprocess, glob, re
 import numpy as np
 from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
+sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import hostos as H
 from pptrender import ppt_to_pdf
 WORK, deck, pdf = os.path.abspath(sys.argv[1]), sys.argv[2], sys.argv[3]
 rest = sys.argv[4:]
@@ -24,12 +25,12 @@ if not os.path.exists(pdf) or os.path.getmtime(pdf) < os.path.getmtime(deck):
     ppt_to_pdf(deck, pdf)
 rd = os.path.join(WORK, 'tmp', 'render'); os.makedirs(rd, exist_ok=True)
 for f in glob.glob(os.path.join(rd, 'r-*.png')): os.remove(f)
-subprocess.run(['pdftoppm', '-png', '-scale-to-x', '1920', '-scale-to-y', '1080', pdf, os.path.join(rd, 'r')], check=True)
+H.render_pdf(pdf, os.path.join(rd, 'r'), size=(1920, 1080))
 rs = sorted(glob.glob(os.path.join(rd, 'r-*.png')), key=lambda f: int(re.findall(r'-(\d+)\.png', f)[0]))
 refs = {}
 if REF:
     for f in glob.glob(os.path.join(rd, 'o-*.png')): os.remove(f)
-    subprocess.run(['pdftoppm', '-png', '-scale-to-x', '1920', '-scale-to-y', '1080', REF, os.path.join(rd, 'o')], check=True)
+    H.render_pdf(REF, os.path.join(rd, 'o'), size=(1920, 1080))
     ro = sorted(glob.glob(os.path.join(rd, 'o-*.png')), key=lambda f: int(re.findall(r'-(\d+)\.png', f)[0]))
     allp = [p['pid'] for p in man['pages']]
     refs = {pid: ro[allp.index(pid)] for pid in pids if allp.index(pid) < len(ro)}

@@ -15,6 +15,7 @@ from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.oxml.ns import qn
 from lxml import etree
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
+sys.path.insert(1, os.path.dirname(HERE)); import hostos
 from fonts import face_of, render, font
 from layers_spacing import track_list, char_layout
 
@@ -24,7 +25,7 @@ CFG = json.load(open(os.path.join(WORK, 'config.json'))) if os.path.exists(os.pa
 man = json.load(open(os.path.join(WORK, 'manifest.json')))
 _cp = os.path.join(WORK, 'calibration.json')
 if not os.path.exists(_cp):
-    _cp = os.path.join(os.path.expanduser(os.environ.get('DOC_IMAGE_DECK_HOME', '~/.local/share/doc-image-deck')), 'calibration.json')
+    _cp = hostos.CALIB
 cal = json.load(open(_cp))
 TABLE = {float(k): v for k, v in cal['baseline_table'].items()}
 SW, SH = man['slide_size']

@@ -17,6 +17,7 @@ from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.oxml.ns import qn
 from lxml import etree
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
+sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import hostos as H
 from fonts import FAMILIES, face_of, font, render
 from pptrender import ppt_to_pdf
 
@@ -55,7 +56,7 @@ pdf = ppt_to_pdf(pp, os.path.join(cal, 'calib.pdf'))
 DPI = 400
 for f in os.listdir(cal):
     if f.startswith('c-') and f.endswith('.png'): os.remove(os.path.join(cal, f))
-subprocess.run(['pdftoppm', '-png', '-r', str(DPI), pdf, os.path.join(cal, 'c')], check=True)
+H.render_pdf(pdf, os.path.join(cal, 'c'), dpi=DPI)
 pages = sorted(f for f in os.listdir(cal) if f.startswith('c-') and f.endswith('.png'))
 imgs = [np.array(Image.open(os.path.join(cal, f)).convert('L')) for f in pages]
 S = DPI / 72.0

@@ -9,6 +9,7 @@ For a PDF, the largest embedded image per page is used (falls back to a 2x rende
 """
 import os, sys, io, json, subprocess, glob, shutil
 from PIL import Image
+sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import hostos as H
 
 src, work = sys.argv[1], sys.argv[2]
 out = os.path.join(work, '01_原图'); os.makedirs(out, exist_ok=True)
@@ -40,20 +41,17 @@ if src.lower().endswith('.pptx'):
     meta = dict(source=os.path.abspath(src), kind='pptx', slide_size=[SW, SH], pages=pages)
 else:
     tmp = os.path.join(work, 'tmp', 'pdfimg'); os.makedirs(tmp, exist_ok=True)
-    info = subprocess.run(['pdfinfo', src], capture_output=True, text=True).stdout
-    npages = int([l for l in info.splitlines() if l.startswith('Pages:')][0].split()[1])
+    npages = H.pdf_page_count(src)
     for n in range(1, npages + 1):
         pid = 'p%02d' % n
-        for f in glob.glob(os.path.join(tmp, '*')): os.remove(f)
-        subprocess.run(['pdfimages', '-png', '-f', str(n), '-l', str(n), src, os.path.join(tmp, 'i')], check=True)
-        cands = sorted(glob.glob(os.path.join(tmp, 'i-*.png')), key=lambda f: -os.path.getsize(f))
+        cands = H.pdf_page_images(src, n, tmp)
         fn = os.path.join(out, pid + '.png')
-        im = Image.open(cands[0]) if cands else None
+        im = cands[0] if cands else None
         if im is None or im.size[0] < 1600:
-            subprocess.run(['pdftoppm', '-png', '-r', '288', '-singlefile', '-f', str(n), '-l', str(n), src, fn[:-4]], check=True)
+            H.render_pdf(src, fn[:-4], dpi=288, first=n, single=True)
             im = Image.open(fn)
         else:
-            shutil.copy(cands[0], fn)
+            im.convert('RGB').save(fn)
         pages.append(dict(pid=pid, slide=n, image=os.path.relpath(fn, work), size=list(im.size), keep=[]))
         print(pid, im.size, flush=True)
     meta = dict(source=os.path.abspath(src), kind='pdf', slide_size=[12192000, 6858000], pages=pages)

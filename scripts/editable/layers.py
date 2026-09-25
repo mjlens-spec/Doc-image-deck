@@ -20,23 +20,22 @@ from scipy import ndimage as ndi
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(1, os.path.dirname(HERE))
+import hostos
 from fonts import FAMILIES, font, render, face_of
 from ocrvote import crop_readings, vote, strip_ornaments, GAP
 from layers_spacing import char_layout
 
 WORK = os.path.abspath(sys.argv[1])
 CFG = json.load(open(os.path.join(WORK, 'config.json'))) if os.path.exists(os.path.join(WORK, 'config.json')) else {}
-RUNTIME = os.path.expanduser(os.environ.get('DOC_IMAGE_DECK_HOME', '~/.local/share/doc-image-deck'))
-OCR_BIN = os.path.join(WORK, 'bin', 'ocrbox')
-if not os.path.exists(OCR_BIN):
-    OCR_BIN = os.path.join(RUNTIME, 'bin', 'ocrbox')
+RUNTIME = hostos.RUNTIME
+OCR_CMD = hostos.ocr_cmd(WORK)        # Apple Vision on macOS, RapidOCR on Windows (same JSON)
 MIN_INK_H = CFG.get('min_ink_height_px', 18)          # at 3840 px page width; scaled to the page. Smaller text stays in the plate
 MAX_BG_STD = CFG.get('max_background_std', 6.0)       # text over photos stays in the plate (ring texture, see texture_ring)
 
 # ─────────────────────────────── OCR
 def ocr(path):
-    js = subprocess.run([OCR_BIN, path], capture_output=True, text=True).stdout
-    return json.loads(js or '[]')
+    return json.loads(hostos.run_ocr([path], WORK) or '[]')
 
 PUNCT_MAP = {'，': ',', '。': '.', '：': ':', '；': ';', '（': '(', '）': ')', '“': '"', '”': '"', '—': '-', '–': '-',
              '、': ',', '！': '!', '？': '?', '｜': '|', '／': '/', '丨': '|', '「': '"', '」': '"', '『': '"', '』': '"',
@@ -239,7 +238,7 @@ def apply_height_splits(img, segs):
     if not pend:
         return segs
     lefts = [dict(box=[s['box'][0], s['box'][1], s['split_x'], s['box'][3]]) for s in pend]
-    reads = crop_readings(Image.fromarray(img), lefts, OCR_BIN, scales=(1.0,), pad_right=0.03)
+    reads = crop_readings(Image.fromarray(img), lefts, OCR_CMD, scales=(1.0,), pad_right=0.03)
     out = []
     for s in segs:
         if 'split_x' not in s:
@@ -1019,7 +1018,14 @@ def lama():
         import torch
         os.environ.setdefault('LAMA_MODEL', os.path.expanduser('~/.cache/torch/hub/checkpoints/big-lama.pt'))
         from simple_lama_inpainting import SimpleLama
-        dev = torch.device('mps') if torch.backends.mps.is_available() and not os.environ.get('LAMA_CPU') else torch.device('cpu')
+        if os.environ.get('LAMA_CPU'):
+            dev = torch.device('cpu')
+        elif torch.cuda.is_available():                     # Windows with an NVIDIA GPU and a CUDA build of torch
+            dev = torch.device('cuda')
+        elif torch.backends.mps.is_available():             # Apple silicon
+            dev = torch.device('mps')
+        else:
+            dev = torch.device('cpu')
         try:
             _lama = SimpleLama(device=dev)
             _lama(Image.new('RGB', (64, 64)), Image.new('L', (64, 64), 255)); print('LaMa device:', dev, flush=True)
@@ -1034,6 +1040,8 @@ def _lama_tile(sub, mk):
         import torch
         if torch.backends.mps.is_available():
             torch.mps.empty_cache()
+        elif torch.cuda.is_available():
+            torch.cuda.empty_cache()
     except Exception:
         pass
     return res
@@ -1180,7 +1188,7 @@ def process(page, corpus):
                 x0 = max(x0, (ox1 + x0) / 2.0) if ox1 > x0 else x0
                 s['pad_l'] = min(s.get('pad_l', 0.6), max(0.02, (x0 - min(ox1, x0)) / 2.0 / max(1, h_)))
         s['box'] = [x0, y0, x1, y1]
-    reads = crop_readings(Image.fromarray(img), todo, OCR_BIN) if CFG.get('ocr_vote', True) else [[] for _ in todo]
+    reads = crop_readings(Image.fromarray(img), todo, OCR_CMD) if CFG.get('ocr_vote', True) else [[] for _ in todo]
     for s, rd in zip(todo, reads):
         raw = s['text']
         text, voted = vote(raw, rd)

@@ -3,8 +3,9 @@
 for reading off exclusion boxes. Usage: review_grid.py <workdir> <out.jpg> pidA [pidB]"""
 import os, sys
 from PIL import Image, ImageDraw, ImageFont
+sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import hostos as H
 work, out = sys.argv[1], sys.argv[2]; pids = sys.argv[3:]
-f = ImageFont.truetype(os.path.expanduser('~/Library/Fonts/NotoSansCJKsc-Bold.otf'), 26)
+f = H.ui_font(26, bold=True)
 tiles = []
 for pid in pids:
     im = Image.open(os.path.join(work, '02_分层', pid, 'debug.jpg')).convert('RGB').resize((1600, 900))

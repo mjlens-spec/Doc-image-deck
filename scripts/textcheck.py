@@ -16,9 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import deckenv as E
 
 def ocr_many(paths):
-    lst = tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False)
+    lst = tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False, encoding='utf-8')
     lst.write('\n'.join(paths)); lst.close()
-    out = subprocess.run([E.OCR_BIN, '--batch', lst.name], capture_output=True, text=True).stdout
+    out = E.hostos.run_ocr(['--batch', lst.name])
     os.remove(lst.name)
     return json.loads(out or '{}')
 

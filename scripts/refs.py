@@ -14,6 +14,7 @@ Usage:
 import os, re, sys, json, glob, shutil, zipfile, argparse, subprocess, datetime, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import deckenv as E
+import hostos
 
 IMG = {'.png', '.jpg', '.jpeg', '.webp', '.heic', '.tif', '.tiff'}
 DOC = {'.pdf', '.pptx', '.key'}
@@ -41,17 +42,25 @@ def image_size(p):
         with Image.open(p) as im:
             return im.size
     except Exception:
-        r = subprocess.run(['sips', '-g', 'pixelWidth', '-g', 'pixelHeight', p], capture_output=True, text=True)
-        n = re.findall(r'pixel(?:Width|Height): (\d+)', r.stdout)
-        return (int(n[0]), int(n[1])) if len(n) == 2 else None
+        try:                                             # HEIC: pillow-heif when installed
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+            from PIL import Image
+            with Image.open(p) as im:
+                return im.size
+        except Exception:
+            pass
+        if hostos.IS_MAC:
+            r = subprocess.run(['sips', '-g', 'pixelWidth', '-g', 'pixelHeight', p], capture_output=True, text=True)
+            n = re.findall(r'pixel(?:Width|Height): (\d+)', r.stdout)
+            return (int(n[0]), int(n[1])) if len(n) == 2 else None
+        return None
 
 
 def page_count(p, ext):
     try:
         if ext == '.pdf':
-            out = subprocess.run(['pdfinfo', p], capture_output=True, text=True).stdout
-            m = re.search(r'Pages:\s+(\d+)', out)
-            return int(m.group(1)) if m else None
+            return hostos.pdf_page_count(p) or None
         if ext == '.pptx':
             with zipfile.ZipFile(p) as z:
                 return sum(1 for n in z.namelist() if re.match(r'ppt/slides/slide\d+\.xml$', n))
@@ -136,12 +145,9 @@ def thumbnail(c, tmp, i):
             im = Image.open(p).convert('RGB'); im.thumbnail((900, 900)); im.save(out, quality=85)
             return out
         if kind == 'heic':
-            subprocess.run(['sips', '-s', 'format', 'jpeg', '-Z', '900', p, '--out', out], capture_output=True, timeout=60)
-            return out if os.path.exists(out) else None
+            return hostos.image_to_png(p, out, max_side=900)
         if kind == 'pdf':
-            stem = os.path.join(tmp, 'r%02d' % i)
-            subprocess.run(['pdftoppm', '-f', '1', '-l', '1', '-scale-to', '900', '-jpeg', '-singlefile', p, stem],
-                           capture_output=True, timeout=60)
+            hostos.render_pdf(p, os.path.join(tmp, 'r%02d' % i), long_side=900, first=1, fmt='jpg', single=True)
             return out if os.path.exists(out) else None
         if kind in ('pptx', 'key'):                    # packaged preview first: fast and needs no GUI session
             with zipfile.ZipFile(p) as z:
@@ -155,11 +161,10 @@ def thumbnail(c, tmp, i):
                         os.remove(out)
                         return None
         qd = os.path.join(tmp, 'ql%02d' % i); os.makedirs(qd, exist_ok=True)
-        subprocess.run(['qlmanage', '-t', '-s', '900', '-o', qd, p], capture_output=True, timeout=20)
-        got = glob.glob(os.path.join(qd, '*.png'))
+        got = hostos.quicklook_thumbnail(p, qd)                 # macOS only
         if got:
             from PIL import Image
-            Image.open(got[0]).convert('RGB').save(out, quality=85)
+            Image.open(got).convert('RGB').save(out, quality=85)
             return out
     except Exception:
         pass
@@ -239,7 +244,9 @@ def cmd_export(a):
         dst = os.path.join(to, stem + ext); shutil.copy(src, dst); outs.append(dst)
     elif ext in IMG:
         dst = os.path.join(to, stem + '.png')
-        subprocess.run(['sips', '-s', 'format', 'png', src, '--out', dst], capture_output=True, check=True); outs.append(dst)
+        if not hostos.image_to_png(src, dst):
+            raise SystemExit('无法读取 %s：Windows 上 HEIC 需要 pillow-heif（deck setup 会安装）。' % src)
+        outs.append(dst)
     elif ext in ('.pdf', '.pptx'):
         pdf = src
         if ext == '.pptx':
@@ -248,8 +255,7 @@ def cmd_export(a):
             pdf = pptrender.ppt_to_pdf(src, os.path.join(to, stem + '_export.pdf'))
         for pg in pages:
             base = os.path.join(to, '%s_p%02d' % (stem, pg))
-            subprocess.run(['pdftoppm', '-f', str(pg), '-l', str(pg), '-scale-to', '1600', '-png', '-singlefile', pdf, base],
-                           capture_output=True, check=True)
+            hostos.render_pdf(pdf, base, long_side=1600, first=pg, single=True)
             outs.append(base + '.png')
         if pdf != src:
             os.remove(pdf)

@@ -1,15 +1,15 @@
 ---
 name: doc-image-deck
-description: 文图方案（Doc-image-deck）：从文档做出一套「整页生图」风格的演示稿，并最终交付可编辑 PowerPoint 的完整流程。文档 → 结构化白板稿 PPTX（含标点整理）→ 用户确认白板稿 → 查找本地视觉参考并询问用户 → 3 个完全不同的设计方向样张供用户选择 → 用 ChatGPT / Codex 内置生图逐页生成整页图片 → 加 Logo 与页码合成图文版 PPTX 和 PDF → 高保真还原为文字与排版都可编辑的 PPTX 和 PDF → 清理中间文件。用户说「文图方案」「Doc-image-deck」「把这份文档做成生图 PPT」「用 GPT 生图出一套提案」「先出白板稿再生图」「出三个设计方向」「图文版 PPT」「把图片版 / 生图版 PPT 转回可编辑」「整页图片的 PPT 还原成可编辑」时使用；已有白板稿、已有生图页面、已有整页图片 PPTX 或 PDF 时，从对应阶段进入。只要求普通可编辑 PPT、不走生图路线时不使用。
+description: 文图方案（Doc-image-deck）：从文档做出一套「整页生图」风格的演示稿，并最终交付可编辑 PowerPoint 的完整流程。文档 → 大纲文案 → 用 humanizer-zh 去 AI 味 → 结构化白板稿 PPTX（含标点整理）→ 用户确认白板稿 → 查找本地视觉参考并询问用户 → 3 个完全不同的设计方向样张供用户选择 → 用 ChatGPT / Codex 内置生图逐页生成整页图片 → 加 Logo 与页码合成图文版 PPTX 和 PDF → 高保真还原为文字与排版都可编辑的 PPTX 和 PDF → 清理中间文件。用户说「文图方案」「Doc-image-deck」「把这份文档做成生图 PPT」「用 GPT 生图出一套提案」「先出白板稿再生图」「出三个设计方向」「图文版 PPT」「把图片版 / 生图版 PPT 转回可编辑」「整页图片的 PPT 还原成可编辑」时使用；已有白板稿、已有生图页面、已有整页图片 PPTX 或 PDF 时，从对应阶段进入。macOS 与 Windows 10 22H2 / 11 均可运行。只要求普通可编辑 PPT、不走生图路线时不使用。
 ---
 
 # 文图方案（Doc-image-deck）
 
-脚本入口：`$S/deck`（`$S` = 本 skill 的 `scripts/` 目录，Claude Code 下为 `~/.claude/skills/doc-image-deck/scripts`，Codex 下为 `~/.codex/skills/doc-image-deck/scripts`，两者指向同一份文件）。`$S/deck help` 列出全部命令。
+脚本入口：macOS 为 `$S/deck`，Windows 为 `$S\deck.cmd`（PowerShell 中写 `& "$S\deck.cmd" …`）。`$S` = 本 skill 的 `scripts/` 目录：Claude Code 下为 `~/.claude/skills/doc-image-deck/scripts`，Codex 下为 `~/.codex/skills/doc-image-deck/scripts`，两者指向同一份文件；Windows 上 `~` 即 `%USERPROFILE%`。下文统一写 `$S/deck`，`$S/deck help` 列出全部命令。
 
 | 阶段 | 产出 | 停下来等用户 |
 |---|---|---|
-| 1 白板稿 | `outline.json` + 白板稿 PPTX：终稿文字、结构、每页版面与配图建议，不做设计；标点整理 | **确认点 1**：确认白板稿，同时询问视觉参考 |
+| 1 白板稿 | `outline.json` → 用 humanizer-zh 去 AI 味 → 标点整理 → 白板稿 PPTX：终稿文字、结构、每页版面与配图建议，不做设计 | **确认点 1**：确认白板稿，同时询问视觉参考 |
 | 2 设计方向与生图 | 3 个完全不同的设计方向样张 → 用户选定 → 全量逐页整页图片，逐页核对文字 | **确认点 2**：选方向 |
 | 3 合成 | 图文版 PPTX + PDF（整页图 + 独立的 Logo 与页码对象） | — |
 | 4 可编辑还原 | 可编辑版 PPTX + PDF（去字底图 + 可编辑文本框） | 仅页面含截图、海报时审阅排除区 |
@@ -19,7 +19,7 @@ description: 文图方案（Doc-image-deck）：从文档做出一套「整页�
 
 ## 开始前
 
-1. 运行 `$S/deck check`。有 ✗ 项时运行 `$S/setup.sh` 补齐（首次约 10 分钟，下载 Python 依赖约 1 GB、LaMa 权重 196 MB、缺失的思源字体），细节见 `references/06_环境与安装.md`。依赖 macOS、Microsoft PowerPoint for Mac、Codex CLI（用 ChatGPT 账号登录）。
+1. 运行 `$S/deck check`。有 ✗ 项时运行 `$S/deck setup` 补齐（首次约 10–20 分钟，下载 Python 依赖约 1 GB、LaMa 权重 196 MB、缺失的思源字体，没有 humanizer-zh 时一并安装），细节见 `references/06_环境与安装.md`。依赖 macOS 或 Windows 10 22H2 / 11、Microsoft PowerPoint、Codex CLI（用 ChatGPT 账号登录）。
 2. 建项目目录，放在用户的交付目录下，命名遵循宿主的文件命名规则（例：`<项目名>_AC_0925A/`）。在里面写 `project.json`：
 
 ```json
@@ -41,15 +41,16 @@ description: 文图方案（Doc-image-deck）：从文档做出一套「整页�
 
 1. 通读文档，按 `references/01_白板稿.md` 的结构写 `00_白板稿/outline.json`：每页一个结论式标题、终稿正文、`layout_hint`（版面建议）、`image_hint`（配图建议）、`tone`（明暗）、讲稿。文字按宿主的写作规范成稿，达到可以直接对客户使用的程度；生图阶段逐字照搬这里的文字，之后很难再改。
 2. 控制每页字量：正文不超过约 150 个汉字，表格不超过 6 行 × 5 列。生图模型字越多错字越多，超出时拆页。
-3. `$S/deck whiteboard <项目>`：先做**标点整理**（标题和短句去掉句号，只有详细描述和成段文字保留句号，规则见 `references/01_白板稿.md`），再生成白板稿 PPTX 和 `outline.md`。改动记在 `00_白板稿/标点整理.md`；其中列出的「列表内句号不统一」要看一下，按需改写后重跑。打开 PPTX 检查有没有溢出、漏页。
-4. `$S/deck refs <项目>`：在项目目录、上级目录和原文档所在目录里查找可用作视觉参考的图片、PDF、PPT（情绪板、品牌手册、往期提案、主视觉、海报），生成 `01_设计方向/参考候选/候选清单.md` 和 `候选对照.jpg`。
-5. **确认点 1（必须停下）**：在一条消息里给用户：
-   - 白板稿 PPTX 的路径、页数和逐页标题；标点整理改了几处。
+3. **去 AI 味**：`$S/deck humanize <项目> export` 把全部上屏文字和讲稿写成 `00_白板稿/文案_原稿.md`，并打印 humanizer-zh 的 SKILL.md 位置。按那份 SKILL.md 的规则编辑文案（Claude Code、Codex 里也可以直接调用 humanizer-zh skill），保留每行的 ⟦编号⟧ 标记，另存为同目录的 `文案_改后.md`，再运行 `$S/deck humanize <项目> import`。导入时逐条核对标记、数字、英文和引号内文字，不一致就拒绝写回，按提示改后重新导入。页数多时可以交给子 agent 处理这一步。规则见 `references/01_白板稿.md`「去 AI 味」。
+4. `$S/deck whiteboard <项目>`：有文案没做去 AI 味时拒绝运行。先做**标点整理**（标题和短句去掉句号，只有详细描述和成段文字保留句号，规则见 `references/01_白板稿.md`），再生成白板稿 PPTX 和 `outline.md`。改动记在 `00_白板稿/标点整理.md`；其中列出的「列表内句号不统一」要看一下，按需改写后重跑。打开 PPTX 检查有没有溢出、漏页。
+5. `$S/deck refs <项目>`：在项目目录、上级目录和原文档所在目录里查找可用作视觉参考的图片、PDF、PPT（情绪板、品牌手册、往期提案、主视觉、海报），生成 `01_设计方向/参考候选/候选清单.md` 和 `候选对照.jpg`。
+6. **确认点 1（必须停下）**：在一条消息里给用户：
+   - 白板稿 PPTX 的路径、页数和逐页标题；去 AI 味改了几条（`去AI味记录.md`）、标点整理改了几处。
    - 视觉参考：本地找到的候选（附 `候选对照.jpg`，按 R01、R02 编号），并问用户是否有想用的视觉参考，可以指定编号，也可以另外提供图片、PDF 或 PPT。说明规则：用户给一个参考，它成为三个方向之一，另外两个方向由你设计；不给参考，三个方向都由你设计。
    - 其他缺的信息（Logo 文件与位置等）一并问。
 
    然后结束本轮，等用户回复，不要继续做设计方向或生图。
-6. 用户要求改白板稿时，改 `outline.json` 并重跑 `deck whiteboard`；改动大时把新版再给用户看一次。用户确认后运行 `$S/deck approve <项目> --note "<用户意见摘要>"`。`deck prompts` 在确认记录缺失、或确认后白板稿文字又被改过时会拒绝运行；之后任何改字都要让用户知道，并重新 `deck approve`。
+7. 用户要求改白板稿时，改 `outline.json`；改动的文字用 `deck humanize <项目> export --changed` 只导出改过的条目，处理后 import；用户给定原话的条目用 `deck humanize <项目> accept --note "用户指定原话"` 保留原样。然后重跑 `deck whiteboard`；改动大时把新版再给用户看一次。用户确认后运行 `$S/deck approve <项目> --note "<用户意见摘要>"`。`deck prompts` 在确认记录缺失、或确认后白板稿文字又被改过时会拒绝运行；之后任何改字都要让用户知道，并重新 `deck approve`。
 
 ## 阶段 2 · 设计方向与全量生图
 
@@ -98,18 +99,28 @@ $S/deck editable <项目>/04_可编辑 03_合成/<name>_图文版_<suffix>.pptx 
 2. 按 `references/05_交付与清理.md` 写 `05_QA/交付检查_<suffix>.md`：页数、字体、比对数值、文字处理说明、留在底图的内容、已知差异。
 3. `$S/deck cleanup <项目> --dry-run` 列出将删除的文件和可释放空间，然后 `$S/deck cleanup <项目>` 执行。默认保留大纲、方向与参考图、提示词、每页选定的生图原稿、`04_可编辑/config.json` 和全部交付文件，足够日后重新合成或重新还原；用户要求彻底清理时加 `--deep`。
 
+## 在 Windows 上运行
+
+命令与 macOS 相同，用 `$S\deck.cmd` 代替 `$S/deck`。差别：
+
+- 运行环境在 `%LOCALAPPDATA%\doc-image-deck`；文字识别用 RapidOCR（PaddleOCR PP-OCRv6 模型），代替 macOS 的 Apple Vision；PDF 渲染用 pypdfium2；PowerPoint 通过 COM 驱动，不需要 macOS 那样的沙盒中转。
+- 字体由 `deck setup` 为当前用户安装（不需要管理员权限）：思源宋体按粗细生成独立字体，名称与可编辑版里写的字体名一致；装完后要重启已打开的 PowerPoint。
+- 没有 NVIDIA 显卡时 LaMa 在 CPU 上运行，可编辑还原每页比 Apple 芯片慢；有显卡时先设置 `DOC_IMAGE_DECK_TORCH_INDEX` 再 `deck setup` 安装 CUDA 版 torch（见 `references/06_环境与安装.md`）。
+- 在 Windows 上生成的可编辑版按 Windows 版 PowerPoint 标定；在另一平台打开时，行位置可能有 1 pt 左右的偏差。
+
 ## 在 Codex（ChatGPT）中运行
 
 整套流程在 Codex 中同样可用，命令完全一致：`deck gen` 本身就是调用 Codex 的内置生图。区别有四处：
 
 - 两个确认点同样要停：给出内容和问题后结束本轮，等用户回复再继续。
-- 权限：`deck gen` 会再起一个 `codex exec`（需要联网）；`deck compose`、`deck editable`、`deck pdf` 和导出 PPTX 参考的 `deck refs --export` 会通过 AppleScript 驱动 PowerPoint。Codex 默认沙盒不允许这两类操作，运行这几条命令时按提示批准提权，或以完全访问模式启动会话；`deck whiteboard`、`deck refs`（查找）、`deck approve`、`deck directions`、`deck prompts`、`deck check` 在默认沙盒里就能运行。
+- 权限：`deck gen` 会再起一个 `codex exec`（需要联网）；`deck compose`、`deck editable`、`deck pdf` 和导出 PPTX 参考的 `deck refs --export` 会通过 AppleScript 驱动 PowerPoint。Codex 默认沙盒不允许这两类操作，运行这几条命令时按提示批准提权，或以完全访问模式启动会话；`deck humanize`、`deck whiteboard`、`deck refs`（查找）、`deck approve`、`deck directions`、`deck prompts`、`deck check` 在默认沙盒里就能运行。
 - 单页返修可以直接调用内置 `image_gen` 工具生成，再把图片复制到 `02_生图/raw/pNN_vK.png` 并更新 `selected.json`。
 - 整个会话使用 Codex 配置中最强的模型和高推理强度（如 `model_reasoning_effort = "high"`）；批量生图的子调用固定用低推理强度，因为提示词原样传给生图工具，不需要模型改写。
 
 ## 容易出错的地方
 
 - 不要跳过确认点 1：白板稿文字会逐字进入每一页生图，生图后再改字要重新生成对应页。
+- 去 AI 味只改表达，不补充原文没有的事实；导入核对只能拦住数字、英文和引文的变化，改后的意思是否走样还要看 `去AI味记录.md`。
 - 三个方向容易只在配色上有差别、配图都是同一类题材；`deck directions` 会拦下五项维度或配图方式重复的方向。
 - 生图模型不严格遵守「角落留空」，交给 `textcheck` 的 `CORNER` 检查兜底，不要跳过。
 - 同一套稿的配图题材容易撞车（机房、光纤、芯片反复出现）；写 `image_hint` 时就逐页区分，联系表阶段再核对一遍。
