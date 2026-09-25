@@ -1,0 +1,32 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install zsh
+        run: sudo apt-get update && sudo apt-get install --yes zsh
+
+      - name: Check shell scripts
+        run: for f in scripts/deck scripts/*.sh scripts/editable/*.sh; do zsh -n "$f"; done
+
+      - name: Run tests
+        run: python3 tests/run_tests.py

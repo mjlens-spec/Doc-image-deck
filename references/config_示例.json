@@ -1,0 +1,20 @@
+{
+ "_说明": "04_可编辑/config.json 示例。坐标为原图像素 [x0, y0, x1, y1]（本例原图 3840×2160）；exclude_boxes 内的文字留在底图（截图、海报、表情包、照片里的文字）；replace 支持 re: 前缀的正则。各键含义见 04b_还原技术细节.md 第 2 节。",
+ "families": ["serif", "sans"],
+ "min_ink_height_px": 18,
+ "max_background_std": 6.0,
+ "bullets_in_plate": true,
+ "ocr_vote": true,
+ "plate_quality": 92,
+ "pages": {
+  "p04": {"exclude_boxes": [[1830, 170, 3670, 1820]]},
+  "p09": {"exclude_boxes": [[520, 560, 1930, 1330]], "replace": {"re:从\\s*[•·・]\\s*到\\s*1": "从 0 到 1"}},
+  "p12": {"split_points": [[890, 500]]}
+ },
+ "proof_allow": "罄睿昵栩",
+ "replace": {
+  "話题": "话题",
+  "钓": "的",
+  "re:^[—–-]\\s+(?=竞品)": ""
+ }
+}

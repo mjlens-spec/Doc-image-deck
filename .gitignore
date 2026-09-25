@@ -1,0 +1,9 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.log
+.idea/
+.vscode/
+
+# 本地私有材料（客户测试项目、含客户名称的内部记录）——不进公开仓库
+/private/
