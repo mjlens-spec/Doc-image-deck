@@ -1,6 +1,6 @@
 # 文图方案 · Doc-image-deck
 
-![version](https://img.shields.io/badge/version-2.0.0-blue.svg) ![license](https://img.shields.io/badge/license-MIT-green.svg) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
+![version](https://img.shields.io/badge/version-2.0.1-blue.svg) ![license](https://img.shields.io/badge/license-MIT-green.svg) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
 
 从一份文档出发，做出一套「整页生图」风格的演示稿，最后交付文字和排版都能自由修改的 PowerPoint。Claude Code 与 Codex（ChatGPT）共用同一个 skill，生图用 ChatGPT 套餐里的 Codex 内置 `image_gen`，不走 API。支持 macOS 和 Windows 10 22H2 / 11。
 
@@ -119,7 +119,9 @@ agent 会按 `SKILL.md` 的流程执行，在两个确认点停下来等你。�
 | 15 页执行规划端到端（macOS，1.2.0） | 白板稿 15 页，13 页内容页用 8 种构图骨架；3 个方向 6 张样张一次成功；全量 15 页一次成功，2 页返修；可编辑版 274 行文字可编辑，与图文版逐页平均色差均值 8.11 |
 | 同一份执行规划第二版（macOS，1.2.1） | 先做品牌调研，再出 3 个扁平杂志编辑风方向；上屏文字增加 48%；全量 15 页一次成功，2 页返修；可编辑版 364 行文字可编辑，逐页平均色差均值 9.22 |
 | 2.0.0 回归：用新的可编辑还原重跑 1.2.1 的 15 页稿 | 不再手工圈大数字：373 行可编辑（原 364 行），留在底图 13 处（原 16 处），其中 1 处是自动识别的超大数字；逐页平均色差均值 9.49（原 9.22，原稿把 4 组大数字留在底图） |
-| 2.0.0：新文档、演讲稿、13 页（含附录）| 故事线与容量检查一次通过；3 个方向样张的封面构图互不相同（1.2.x 两次测试的 6 张封面都是同一构图）；内容样张没有规划外的图标；多出文字检查拦下一张照片封面里模型自行写的手写字 |
+| 2.0.x：新文档、演讲稿、13 页（含附录），全流程 | 故事线与容量检查一次通过；3 个方向样张的封面构图互不相同（1.2.x 两次测试的 6 张封面都是同一构图）；多出文字检查拦下一张照片封面里模型自行写的手写字。全量 13 页一次全部成功、文字核对无缺字；子 agent 审图 11 页通过、2 页返修一轮后通过 |
+| 2.0.x 新旧提示词对比（同一大纲、同一方向，各 13 页）| 规划外图标：旧提示词 4 页（其中 1 页画了代表 Agent 的机器人），新提示词 0 页；审图判定需重生成：旧 3 页，新 2 页；两组文字核对都无缺字 |
+| `deck fix` 局部改字 | 人为改错的一个字被改回，字体字重与原图一致，改动区域外像素差 1.5（0–255） |
 | 生图单张耗时 | 55–220 秒（附参考图时偏长），4 路并发 |
 
 ## 关于生图模型
@@ -150,7 +152,7 @@ docs/前因后果.md          这个项目怎么来的、做过的决定和验�
 - 页面里的截图、海报、表情包要人工圈定为排除区，留在底图上。
 - 生图额度受 ChatGPT 套餐限制；74 页全量生图约 40 分钟。
 - 演讲稿的每页容量是初始值，还没有足够的测试数据；阅读稿的容量来自一次 15 页测试。
-- `deck gen --skeleton-refs` 和 `deck prompts --corner-guide` 是可选项，对标题漂移和压角的改善还在对比测试中。
+- `deck gen --skeleton-refs` 和 `deck prompts --corner-guide` 是可选项：`--skeleton-refs` 在 13 页对比中没有看出差别；`--corner-guide` 还没有做对比测试。
 - 多出文字检查查不出两位数编号（01、02）和图标，这两类靠默认禁画项和审图。
 
 ## 许可

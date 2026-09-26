@@ -126,14 +126,16 @@ class Corpus:
             # unmatched OCR head/tail count against the match
             if o0 > 0 or o1 < n:
                 score = m / float(max(n, g1 - g0) + (o0 + n - o1))
-            if best is None or score > best[0]:
-                best = (score, k, g0, g1, sm)
+            whole = (g1 - g0) / float(len(g))               # on a tie, prefer the string the line matches in full
+            if best is None or (score, whole) > (best[0], best[5]):
+                best = (score, k, g0, g1, sm, whole)
         if best is None:
             return None
-        score, k, g0, g1, sm = best
+        score, k, g0, g1, sm, _ = best
         m_ = sum(b.size for b in sm.get_matching_blocks())
         one_sub = 4 <= n < 6 and g1 - g0 == n and m_ == n - 1       # short line, a single substituted glyph
-        if score < (0.8 if n >= 6 else 0.999) and not one_sub:
+        one_ins = trust_digits and 4 <= n < 6 and g1 - g0 == n + 1 and m_ == n   # a single dropped glyph (Vision drops 的)
+        if score < (0.8 if n >= 6 else 0.999) and not one_sub and not one_ins:
             return None
         g, gidx = self.norm[k]
         seg = self.segs[k]
@@ -230,6 +232,11 @@ def split_by_height(img, seg, manual=()):
         return [seg]
     _, k = best
     xs = X0 + (cr[k - 1][1] + cr[k][0]) / 2.0
+    # Latin letters are shorter than CJK glyphs of the same size: 'Agent 负责…' is one line, not a size change
+    t = seg['text']; cut = (xs - x0) / max(1.0, x1 - x0) * len(t)        # rough: Latin glyphs are narrower
+    for m in re.finditer(r'(?<=[A-Za-z])\s*(?=[\u4e00-\u9fff])|(?<=[\u4e00-\u9fff])\s*(?=[A-Za-z])', t):
+        if abs(m.start() - cut) <= 2.5:
+            return [seg]
     return [dict(seg, split_x=xs)]
 
 def apply_height_splits(img, segs):
@@ -1233,6 +1240,17 @@ def make_plate(img, mask, max_pixels=2.2e6, tile=1400, overlap=200):
                 continue
             sub = plate[ty:ty1, tx:tx1]
             res = _lama_tile(sub, mk)
+            ring = ndi.binary_dilation(mk, iterations=12) & ~ndi.binary_dilation(mk, iterations=3)
+            if ring.sum() > 200 and mk.sum() > 5000:
+                # large masks on a flat ground: LaMa sometimes fills the middle with a grey smear; fall back to the
+                # ground colour when the fill drifts far from a uniform surrounding (faint patterns are lost there)
+                rp = sub[ring].astype(np.float32); c0 = np.median(rp, 0)
+                mad = float(np.median(np.abs(rp - c0).max(-1)))
+                far = np.sqrt(((res.astype(np.float32) - c0) ** 2).sum(-1)) > 25
+                if mad <= 4 and (far & mk).any():
+                    # only the pixels that drifted far from the ground; faint patterns (grid, grain) stay
+                    fix = ndi.binary_dilation(far & mk, iterations=2) & mk
+                    res = res.copy(); res[fix] = c0.astype(np.uint8)
             a = cv2.GaussianBlur(ndi.binary_dilation(mk, iterations=1).astype(np.float32), (0, 0), 1.2)[..., None]
             a = np.maximum(a, mk[..., None].astype(np.float32))
             plate[ty:ty1, tx:tx1] = (sub * (1 - a) + res * a).astype(np.uint8)

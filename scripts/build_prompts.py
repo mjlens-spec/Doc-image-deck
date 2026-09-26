@@ -174,7 +174,8 @@ def build(cfg, outline, page, n, total, direction):
     lines.append('Text rules: render ONLY the quoted strings listed above, character by character; "Group … draw as" lines and every '
                  'other instruction in this prompt are directions, never text to show. Simplified Chinese must be exact: no missing, '
                  'extra or substituted characters, no traditional forms. Numbers, units and punctuation exactly as written; never add a '
-                 'full stop (。) or any other mark at the end of a string that does not have one above. '
+                 'full stop (。) or any other mark at the end of a string that does not have one above. When a string wraps, no line '
+                 'starts with a Chinese punctuation mark (，。、：；！？）」); break before the preceding character instead. '
                  'No invented labels, captions, English decoration words, placeholder text or gibberish; paper, notebooks, sticky notes, '
                  'screens and signs inside pictures carry no readable writing (leave them blank or blurred). The title is the largest text; '
                  'body text stays comfortably readable on a meeting-room screen.')

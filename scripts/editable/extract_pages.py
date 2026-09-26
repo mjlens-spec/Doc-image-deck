@@ -55,5 +55,7 @@ else:
         pages.append(dict(pid=pid, slide=n, image=os.path.relpath(fn, work), size=list(im.size), keep=[]))
         print(pid, im.size, flush=True)
     meta = dict(source=os.path.abspath(src), kind='pdf', slide_size=[12192000, 6858000], pages=pages)
+st = os.stat(src)
+meta['source_stat'] = [st.st_size, int(st.st_mtime)]      # run_editable.py re-extracts when the source changes
 json.dump(meta, open(os.path.join(work, 'manifest.json'), 'w'), ensure_ascii=False, indent=1)
 print('pages:', len(pages))

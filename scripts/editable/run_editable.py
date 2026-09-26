@@ -49,7 +49,7 @@ def main():
         else:
             raise SystemExit('unknown option %s' % rest[i])
     os.makedirs(work, exist_ok=True)
-    if not os.path.exists(os.path.join(work, 'manifest.json')):
+    if pages_stale(work, src):
         run('extract_pages.py', src, work)
     if outline:
         run('corpus.py', work, '--outline', outline)
@@ -64,6 +64,19 @@ def main():
     run('verify.py', work, out, pdf, *(['--ref', ref] if ref else []))
     run('proof_sheet.py', work, os.path.join(work, '03_QA', '校对表'), keep='first')
     run('qa_sheet.py', work, pdf, os.path.join(work, '03_QA', '全稿对照'), 8, keep='last')
+
+
+def pages_stale(work, src):
+    """Extract again when there is no manifest, the image deck is another file or has changed since the extraction
+    (a page was regenerated and the deck recomposed), or a page image is gone (deck cleanup deletes them)."""
+    mp = os.path.join(work, 'manifest.json')
+    if not os.path.exists(mp):
+        return True
+    m = json.load(open(mp, encoding='utf-8'))
+    st = os.stat(src)
+    if m.get('source') != os.path.abspath(src) or m.get('source_stat') != [st.st_size, int(st.st_mtime)]:
+        return True
+    return any('image' in p and not os.path.exists(os.path.join(work, p['image'])) for p in m.get('pages', []))
 
 
 if __name__ == '__main__':

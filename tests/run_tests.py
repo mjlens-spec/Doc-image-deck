@@ -646,6 +646,9 @@ class TestPromptV2(unittest.TestCase):
         text = build_prompts.build(self.cfg, self.o, self.o['pages'][1], 2, 4, d)[1]
         self.assertIn('draw no icons or pictograms', text)
         self.assertIn('glossy plastic 3D objects', text)
+        self.assertIn('robots, androids', text)
+        self.assertIn('no line starts with a Chinese punctuation mark', text)
+        self.assertIn('carry no readable writing', text)
         self.assertIn('no photograph and no icons', build_prompts.build(self.cfg, self.o, self.o['pages'][2], 3, 4, d)[1])
         d.update(icons='planned', imagery_mode='3d')
         text = build_prompts.build(self.cfg, self.o, self.o['pages'][1], 2, 4, d)[1]
@@ -686,6 +689,8 @@ class TestTextcheckV2(unittest.TestCase):
         idx = {p: {'tone': 'light', 'kind': 'content'} for p in rep}
         d = self.tc.drift(rep, idx)
         self.assertEqual(sorted(d), ['p06', 'p07'])
+        idx['p06']['skeleton'] = 'hero'                                   # an oversized title on a hero slide is intended
+        self.assertEqual(sorted(self.tc.drift(rep, idx)), ['p07'])
         self.assertIn('偏低', d['p06']); self.assertIn('字高', d['p07'])
 
     def test_locate(self):

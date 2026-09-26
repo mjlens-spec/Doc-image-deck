@@ -14,7 +14,7 @@ re-check of two pages still compares titles across the whole deck) and prints on
   EXTRA  text on the slide that is in none of its strings (a label taken from the drawing directions, a percentage
          the model worked out, English decoration): look, then regenerate
   DRIFT  the title sits higher / lower / further left or is bigger / smaller than on the other slides of the same
-         tone (style drift): look, then regenerate with the style references
+         tone (style drift; hero and asym slides are left out): look, then regenerate with the style references
   PUNCT  a line ends with 。 although its string has no full stop (the image model added one): look, then regenerate
 """
 import os, re, sys, json, argparse, difflib, tempfile, statistics
@@ -214,7 +214,8 @@ def drift(report, index):
     groups = {}
     for pid, r in report.items():
         meta = index.get(pid, {})
-        if r.get('title_box') and meta.get('kind', 'content') in E.CONTENT_KINDS:
+        if r.get('title_box') and meta.get('kind', 'content') in E.CONTENT_KINDS and meta.get('skeleton') not in ('hero', 'asym'):
+            # hero slides enlarge the title on purpose; asym slides may put it in a side column
             groups.setdefault(meta.get('tone', 'light'), []).append(pid)
     for tone, pids in groups.items():
         if len(pids) < 4:
@@ -272,6 +273,9 @@ def run(project, prompts, raw, pages=None, quiet=False):
                     boxes[s] = b
             elif r < 1.0:
                 near.append(s)
+                b = locate(s, lines)
+                if b:
+                    boxes[s] = b
         corner, in_corner = [], set()
         n = meta.get('n')
         for c, (x0, y0, x1, y1) in corner_boxes(cfg, W, H, n is None or E.page_number_on(cfg, n, total, outline_pages)).items():
