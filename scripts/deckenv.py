@@ -39,7 +39,8 @@ IMAGERY_MODES = {
     '3d':           ('三维渲染', 'clean 3D-rendered objects and scenes, soft global illumination, no photographs'),
     'typographic':  ('纯文字排版', 'no pictures at all: typography, whitespace, rules and colour blocks carry the page'),
 }
-DIMS = [('typeface', '字体'), ('palette', '配色'), ('layout', '版式语法'), ('imagery', '配图'), ('texture', '质感')]
+DIMS = [('typeface', '字体'), ('palette', '配色'), ('layout', '版式语法'), ('imagery', '配图'), ('texture', '质感'),
+        ('diagram', '图示语言')]
 
 # outline.json page "visual" brief (visual.py checks it, build_prompts.py writes it into the prompt).
 # structure: how the ideas on the slide relate to each other; decides what kind of diagram the slide gets.
@@ -73,6 +74,127 @@ SKELETONS = {
     'quadrant': ('四象限', 'a 2 × 2 grid of quadrants'),
 }
 
+# page kinds. agenda / summary / appendix are content-like pages with a fixed job; appendix pages come after the closing
+# page, are numbered A1, A2 … and do not count toward max_pages.
+KINDS = {'cover': '封面', 'agenda': '目录', 'summary': '执行摘要', 'section': '章节页', 'content': '内容页',
+         'closing': '封底', 'appendix': '附录'}
+CONTENT_KINDS = ('content', 'summary', 'agenda', 'appendix')     # pages that carry a title bar and body text
+
+# project.json "deck_mode": what the deck is for. present = shown and spoken to (one point per slide, detail in the
+# notes); read = sent and read without a presenter (self-contained pages, detail in an appendix). Default read.
+MODES = {'present': '演讲稿', 'read': '阅读稿'}
+
+# per-skeleton capacity: (body CJK characters, printed strings) for present / read. Body = every printed string except
+# kicker, title and subtitle; strings = every printed string except table header and cells (a table is limited by
+# TABLE_MAX instead). read values: the 1.2.1 test maxima + ~10% (all passed the first text check); present values are
+# starting values without test data yet.
+CAPACITY = {
+    'hero':     {'present': (40, 5),   'read': (80, 12)},
+    'bignum':   {'present': (60, 8),   'read': (120, 12)},
+    'split':    {'present': (100, 10), 'read': (190, 25)},
+    'asym':     {'present': (100, 10), 'read': (190, 25)},
+    'cards':    {'present': (100, 10), 'read': (190, 16)},
+    'diagram':  {'present': (120, 14), 'read': (250, 28)},
+    'bands':    {'present': (120, 14), 'read': (250, 28)},
+    'radial':   {'present': (120, 14), 'read': (250, 28)},
+    'quadrant': {'present': (120, 14), 'read': (250, 28)},
+    'table':    {'present': (120, 99), 'read': (250, 99)},
+}
+TABLE_MAX = (6, 5)          # data rows × columns
+TITLE_MAX, KICKER_MAX = 30, 8
+
+# direction.json "axes": one value per axis, so the three directions are compared on fixed options instead of free text.
+AXES = {
+    'typeface': ('字体', {'serif_title': '宋体标题 + 黑体正文', 'sans_bold': '粗黑体标题 + 黑体正文', 'serif_book': '宋体为主的书卷气',
+                          'contrast': '黑宋强对比混排', 'rounded': '圆体或手写点缀'}),
+    'layout':   ('版式语法', {'swiss_grid': '瑞士网格、严格对齐', 'magazine_asym': '杂志式非对称', 'centered': '居中对称、仪式感',
+                            'modular': '模块卡片', 'fullbleed': '满版图上叠字'}),
+    'texture':  ('质感', {'flat_print': '平面印刷', 'paper': '纸张压印、烫金', 'cinematic': '光影摄影、电影感',
+                         'grain': '胶片颗粒、粗网点', 'gloss': '玻璃与光泽'}),
+    'diagram':  ('图示语言', {'hairline': '发丝线矢量', 'solid': '实心色块', 'hand_drawn': '手绘线', 'isometric': '等距几何',
+                            'print_block': '版画、印章肌理'}),
+    'color_strategy': ('配色策略', {'restrained': '克制：中性色为主，强调色只用在焦点', 'dominant': '一色主导：主色占 30–60%',
+                                   'multi': '多色：三到四个等权颜色', 'drenched': '满铺：整页铺主色'}),
+}
+AXES_DISTINCT = ('typeface', 'layout', 'texture', 'diagram')     # differ pairwise; color_strategy: at least two kinds
+ICON_POLICIES = {
+    'none':    ('不画图标', 'Icons: draw no icons or pictograms anywhere (no line icons in front of list items, cards, nodes or rows). '
+                          'Hierarchy comes from numbers, type weight, rules and colour. Simple marks that the drawing directions '
+                          'name (ticks, crosses, checkboxes, arrows) are drawing elements and are fine.'),
+    'planned': ('只画规划里的图标', 'Icons: draw an icon only where the drawing directions name one, and only that icon; add no '
+                                 'other icons or pictograms.'),
+    'illustrative': ('允许插画小图', 'Icons: small illustrations are allowed where the imagery note asks for them; no rows of '
+                                    'generic line icons.'),
+}
+TEMPERATURES = {'safe': '行业常见款', 'distinct': '与行业常见款拉开'}
+# looks an image model falls into by default; banned on every slide unless the direction lists the key in "allow"
+BASE_AVOID = {
+    '3d':        'glossy plastic 3D objects, isometric blocks and 3D bar charts',
+    'glass':     'glassmorphism and frosted-glass panels',
+    'glow':      'glow, neon and light trails',
+    'gradient':  'blue-to-cyan gradients on white (SaaS-dashboard look)',
+    'float':     'floating cards with drop shadows',
+    'underline': 'a short decorative rule under the title',
+    'badges':    'number badges (01, 02 …) that are not among the quoted strings',
+    'robot':     'robots, androids or helmeted figures standing for AI or agents',
+}
+
+
+def deck_mode(cfg):
+    m = (cfg or {}).get('deck_mode') or 'read'
+    return m if m in MODES else 'read'
+
+
+CJK_RE = re.compile(r'[㐀-鿿]')
+
+def cjk_len(s):
+    return len(CJK_RE.findall(s or ''))
+
+
+def page_load(page):
+    """(body CJK characters, printed strings, (table rows, table columns) of the largest table) for the capacity check."""
+    body, n, table = 0, 0, (0, 0)
+    for role, s in page_strings(page):
+        if role in ('table header', 'table cell'):
+            if role == 'table cell':
+                body += cjk_len(s)
+            continue
+        n += 1
+        if role not in ('kicker', 'title', 'subtitle'):
+            body += cjk_len(s)
+    for b in page.get('blocks', []):
+        if b.get('type') == 'table':
+            rows = b.get('rows', [])
+            cols = max([len(b.get('header', []))] + [len(r) for r in rows] or [0])
+            table = max(table, (len(rows), cols))
+    return body, n, table
+
+
+def page_labels(cfg, pages):
+    """Page-number label per slide ('' = no number): the cover and the closing page skip it by default, appendix pages
+    are numbered A1, A2 …, every other slide by its position. pages: outline pages (only kind is read) or a count."""
+    if isinstance(pages, int):
+        pages = [{}] * pages
+    pn = (cfg or {}).get('page_number') or {}
+    total = len(pages)
+    has_closing = any(p.get('kind') == 'closing' for p in pages)
+    out, app = [], 0
+    for n, p in enumerate(pages, 1):
+        kind = p.get('kind')
+        if kind == 'appendix':
+            app += 1
+        if not pn.get('corner'):
+            out.append('')
+        elif n == 1 and pn.get('skip_first', True):
+            out.append('')
+        elif pn.get('skip_last', True) and (kind == 'closing' or (not has_closing and n == total)):
+            out.append('')
+        elif kind == 'appendix':
+            out.append('A%d' % app)
+        else:
+            out.append(pn.get('format', '{:02d}').format(n))
+    return out
+
 
 def load_project(proj):
     p = os.path.join(proj, 'project.json')
@@ -92,12 +214,10 @@ def load_project(proj):
     return cfg
 
 
-def page_number_on(cfg, n, total):
-    """Whether compose.py puts a page number on slide n of total (the cover and closing slides skip it by default)."""
-    pn = cfg.get('page_number') or {}
-    if not pn.get('corner'):
-        return False
-    return not ((n == 1 and pn.get('skip_first', True)) or (n == total and pn.get('skip_last', True)))
+def page_number_on(cfg, n, total, pages=None):
+    """Whether compose.py puts a page number on slide n of total (the cover and closing slides skip it by default;
+    pass the outline pages so a closing page followed by an appendix is recognised)."""
+    return bool(page_labels(cfg, pages if pages else total)[n - 1])
 
 
 def save_project(proj, cfg):

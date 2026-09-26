@@ -33,8 +33,9 @@ def main():
     d = tempfile.mkdtemp(prefix='did_smoke_')
     try:
         proj = os.path.join(d, 'proj'); wd = os.path.join(proj, '00_白板稿'); os.makedirs(wd)
-        outline = {'title': '测试', 'pages': [{'id': 'p01', 'kind': 'content', 'title': TITLE,
-                                               'blocks': [{'type': 'bullets', 'items': BULLETS}], 'notes': '讲稿。'}]}
+        outline = {'title': '测试', 'storyline': {'thesis': '冒烟测试的结论'},
+                   'pages': [{'id': 'p01', 'kind': 'content', 'chapter': '测试', 'title': TITLE,
+                              'blocks': [{'type': 'bullets', 'items': BULLETS}], 'notes': '讲稿。'}]}
         json.dump(outline, open(os.path.join(wd, 'outline.json'), 'w', encoding='utf-8'), ensure_ascii=False)
         json.dump({'name': '冒烟测试', 'suffix': 'AC_0925A'}, open(os.path.join(proj, 'project.json'), 'w', encoding='utf-8'), ensure_ascii=False)
         step('humanize accept', [os.path.join(S, 'humanize.py'), proj, 'accept', '--note', 'smoke'])

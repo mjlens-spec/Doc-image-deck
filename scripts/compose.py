@@ -8,6 +8,7 @@ Writes 03_合成/pNN.png (upscaled), 03_合成/<name>_图文版_<suffix>.pptx/.p
 
 Logo entry: {"light": "<logo for light backgrounds>", "dark": "<logo for dark backgrounds>", "corner": "bl|br|tl|tr",
              "height_in": 0.26}. The variant is chosen per slide from the brightness of that corner.
+Page numbers: deckenv.page_labels (no number on the cover and the closing page by default; appendix pages A1, A2 …).
 """
 import os, sys, json, argparse
 from PIL import Image, ImageStat
@@ -63,6 +64,7 @@ def main():
     pn = cfg.get('page_number') or {}
     margin, foot_y, head_y = cfg['margin_in'], cfg.get('footer_y_in', 7.05), cfg.get('header_y_in', 0.2)
     report = []
+    labels = E.page_labels(cfg, outline['pages'])
     for n, (pid, page) in enumerate(zip(ids, outline['pages']), 1):
         src = Image.open(os.path.join(raw, sel[pid])).convert('RGB')
         k = cfg.get('upscale', 2)
@@ -86,11 +88,10 @@ def main():
             logo = s.shapes.add_picture(use, Inches(x), Inches(y), Inches(w), Inches(h))
             logo.name = lg.get('name', 'Logo')
             rec.setdefault('logos', []).append(('深底用' if dark and lg.get('dark') else '浅底用') + '@' + lg.get('corner', 'bl'))
-        first, last = n == 1, n == len(ids)
-        if pn.get('corner') and not (first and pn.get('skip_first', True)) and not (last and pn.get('skip_last', True)):
+        if labels[n - 1]:
             bw, bh = 0.9, 0.26
             x, y = place(pn['corner'], bw, bh, margin, foot_y, head_y)
-            text = pn.get('format', '{:02d}').format(n)
+            text = labels[n - 1]
             tw = 0.12 * len(text) + 0.1
             tx = x + bw - tw if pn['corner'].endswith('r') else x
             mean, std = corner_stats(img, px_box(img, tx, y, tw, bh, 0.05))

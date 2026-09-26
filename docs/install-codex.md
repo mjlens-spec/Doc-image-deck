@@ -4,7 +4,7 @@
 
 ## 适用范围
 
-- 客户端：Codex CLI（终端），用 ChatGPT 账号登录。Codex 从 `~/.codex/skills/` 读取 skill；Codex IDE 插件和 Codex 桌面应用只要使用同一个 `~/.codex` 目录，同样适用。
+- 客户端：Codex CLI（终端），用 ChatGPT 账号登录。「在 ChatGPT 里用」指的就是 Codex；ChatGPT 网页版和桌面版的对话窗口不能运行本地脚本，装不了本 skill。Codex 从 `~/.codex/skills/` 读取 skill；Codex IDE 插件和 Codex 桌面应用只要使用同一个 `~/.codex` 目录，同样适用。
 - 系统：macOS（Apple 芯片或 Intel）、Windows 10 22H2 / Windows 11。
 - 生图走 Codex 内置的 `image_gen`，用 ChatGPT 套餐额度，不需要 `OPENAI_API_KEY`。脚本会先确认 Codex 用 ChatGPT 账号登录，否则停止，避免产生 API 费用。
 
@@ -79,7 +79,7 @@ codex --search
 cd ~/Doc-image-deck && git pull && python3 scripts/install.py --no-setup
 ```
 
-`--no-setup` 只同步 skill 文件。版本说明里提到运行环境有变化时，去掉这个参数重新运行，或运行 `deck setup`。
+`--no-setup` 只同步 skill 文件。版本说明里提到运行环境有变化时，去掉这个参数重新运行，或运行 `deck setup`。从 1.x 升到 2.0.0 运行环境没有变化，`--no-setup` 即可；进行中的 1.x 项目要在 `outline.json` 里补 `storyline.thesis` 和各页 `chapter`（原文是 Markdown 或 .docx 时还要补 `source`），见 CHANGELOG。
 
 ## 卸载
 

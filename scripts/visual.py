@@ -14,21 +14,84 @@ A block may carry "visual": "<how this block is drawn>", which ties its strings 
 
 Errors: a page without message / structure / form / focal / skeleton or with an unknown value; two neighbouring
 slides with the same skeleton; one skeleton on more than a quarter of the content slides (at least 2 allowed);
-structure "list" on more than a fifth (at least 1 allowed); more pages than project.json "max_pages"; a section
-page when project.json has "section_pages": false.
-Warnings: neighbouring slides with the same structure; the same form or motif text on two slides.
+structure "list" on more than a fifth (at least 1 allowed); more pages than project.json "max_pages" (appendix pages
+not counted); a section page when project.json has "section_pages": false; a page over the capacity of its skeleton
+for the deck mode (deckenv.CAPACITY: body CJK characters and printed strings; tables at most 6 rows x 5 columns); a
+title over 30 characters (appendix pages always use the read capacity); in present mode, more than 3 dense content slides in a row, or no light slide in a deck of
+8 or more (light = hero / bignum with at most half the body capacity).
+Warnings: neighbouring slides with the same structure; the same form or motif text on two slides; a kicker over 8
+characters; a content slide with under 20 body characters that is not a hero / bignum slide (merge candidate).
 Writes 00_白板稿/视觉规划.md. build_prompts.py runs the same check and refuses to write prompts while it fails.
 """
 import os, sys, math, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import deckenv as E
+import punct
 
 FIELDS = [('message', '这一页要说清'), ('structure', '信息结构'), ('form', '画法'), ('focal', '视觉焦点'), ('skeleton', '构图骨架')]
-KIND = {'cover': '封面', 'section': '章节页', 'content': '内容页', 'closing': '封底'}
+KIND = E.KINDS
 
 
 def label(table, key):
     return table.get(key, (key or '—',))[0]
+
+
+def density(page, mode):
+    """'light' for a hero / bignum slide using at most half of its body capacity, else 'dense'."""
+    v = page.get('visual') if isinstance(page.get('visual'), dict) else {}
+    sk = v.get('skeleton')
+    if sk in ('hero', 'bignum'):
+        body = E.page_load(page)[0]
+        if body <= E.CAPACITY[sk][mode][0] / 2.0:
+            return 'light'
+    return 'dense'
+
+
+def capacity(outline, cfg):
+    """Errors and warnings of the per-skeleton text capacity, title length and (present mode) rhythm checks."""
+    errs, warns = [], []
+    mode = E.deck_mode(cfg)
+    pages = outline.get('pages', [])
+    ids = E.page_ids(outline)
+    for pid, p in zip(ids, pages):
+        title = str(p.get('title') or '')
+        if punct.visible_len(title) > E.TITLE_MAX:
+            errs.append('%s 标题 %d 字，超过 %d 字：改短，或把依据移进正文' % (pid, punct.visible_len(title), E.TITLE_MAX))
+        if p.get('kicker') and p.get('kind', 'content') in E.CONTENT_KINDS and punct.visible_len(str(p['kicker'])) > E.KICKER_MAX:
+            warns.append('%s 的 kicker「%s」超过 %d 字' % (pid, p['kicker'], E.KICKER_MAX))
+        v = p.get('visual') if isinstance(p.get('visual'), dict) else {}
+        sk = v.get('skeleton')
+        body, n, (rows, cols) = E.page_load(p)
+        if rows > E.TABLE_MAX[0] or cols > E.TABLE_MAX[1]:
+            errs.append('%s 的表格 %d 行 × %d 列，超过 %d × %d：拆页、改成分栏，或%s' % (
+                pid, rows, cols, E.TABLE_MAX[0], E.TABLE_MAX[1], '把明细放进讲稿' if mode == 'present' else '把明细放进附录'))
+        if sk in E.CAPACITY:
+            cap_body, cap_n = E.CAPACITY[sk]['read' if p.get('kind') == 'appendix' else mode]   # appendix pages are read
+            over = []
+            if body > cap_body:
+                over.append('正文 %d 字（上限 %d）' % (body, cap_body))
+            if n > cap_n:
+                over.append('%d 条文字（上限 %d）' % (n, cap_n))
+            if over:
+                errs.append('%s 按「%s」骨架、%s计算：%s。拆成续页、换一种容量更大的骨架，或%s' % (
+                    pid, label(E.SKELETONS, sk), E.MODES[mode], '，'.join(over),
+                    '把细节移进讲稿' if mode == 'present' else '把明细移进附录'))
+            if p.get('kind', 'content') == 'content' and body < 20 and sk not in ('hero', 'bignum'):
+                warns.append('%s 正文只有 %d 字：考虑与相邻页合并，或改用大字、大数字骨架' % (pid, body))
+    if mode == 'present':
+        content = [(pid, p) for pid, p in zip(ids, pages) if p.get('kind', 'content') in ('content', 'summary')]
+        run = []
+        for pid, p in content + [(None, None)]:
+            if p is not None and density(p, mode) == 'dense':
+                run.append(pid)
+                continue
+            if len(run) > 3:
+                errs.append('演讲稿连续 %d 页高密度内容页（%s）：每 3 页至少插一页大字或大数字的低密度页，或把细节移进讲稿' % (
+                    len(run), '、'.join(run)))
+            run = []
+        if len(pages) >= 8 and content and all(density(p, mode) == 'dense' for _, p in content):
+            errs.append('演讲稿 %d 页，没有一页低密度内容页（大字论断或大数字，正文不超过骨架上限的一半）' % len(pages))
+    return errs, warns
 
 
 def check(outline, cfg=None):
@@ -36,8 +99,9 @@ def check(outline, cfg=None):
     errs, warns = [], []
     pages = outline.get('pages', [])
     ids = E.page_ids(outline)
-    if cfg.get('max_pages') and len(pages) > cfg['max_pages']:
-        errs.append('共 %d 页，超过 project.json 的 max_pages（%d 页）' % (len(pages), cfg['max_pages']))
+    main_pages = [p for p in pages if p.get('kind') != 'appendix']
+    if cfg.get('max_pages') and len(main_pages) > cfg['max_pages']:
+        errs.append('正文共 %d 页，超过 project.json 的 max_pages（%d 页，附录不计）' % (len(main_pages), cfg['max_pages']))
     if cfg.get('section_pages') is False:
         sec = [pid for pid, p in zip(ids, pages) if p.get('kind') == 'section']
         if sec:
@@ -60,7 +124,7 @@ def check(outline, cfg=None):
             errs.append('%s 与 %s 相邻，构图骨架相同（%s），换一种' % (pa, pb, label(E.SKELETONS, va['skeleton'])))
         elif va.get('structure') and va.get('structure') == vb.get('structure'):
             warns.append('%s 与 %s 相邻，信息结构相同（%s），确认画法有明显区别' % (pa, pb, label(E.STRUCTURES, va['structure'])))
-    content = [(pid, v) for pid, p, v in vis if p.get('kind', 'content') == 'content']
+    content = [(pid, v) for pid, p, v in vis if p.get('kind', 'content') in E.CONTENT_KINDS]
     cap = max(2, int(math.ceil(len(content) / 4.0)))
     use = collections.OrderedDict()
     for pid, v in content:
@@ -84,23 +148,31 @@ def check(outline, cfg=None):
                 warns.append('%s 与 %s 的%s相同' % (seen[t], pid, lab))
             else:
                 seen[t] = pid
-    return errs, warns
+    ce, cw = capacity(outline, cfg)
+    return errs + ce, warns + cw
 
 
-def plan_md(outline, errs, warns):
+def plan_md(outline, errs, warns, cfg=None):
     pages = outline.get('pages', [])
     ids = E.page_ids(outline)
+    mode = E.deck_mode(cfg)
     vis = [p.get('visual') if isinstance(p.get('visual'), dict) else {} for p in pages]
     kinds = collections.Counter(KIND.get(p.get('kind', 'content'), p.get('kind')) for p in pages)
+    mark = lambda p: '·' if density(p, mode) == 'light' else '■'
     out = ['# 视觉规划', '',
-           '全稿 %d 页（%s）。' % (len(pages), '、'.join('%s %d' % kv for kv in kinds.items())), '',
+           '全稿 %d 页（%s）；读法：%s。' % (len(pages), '、'.join('%s %d' % kv for kv in kinds.items()), E.MODES[mode]), '',
            '构图节奏：' + ' → '.join('%s %s' % (pid.upper(), label(E.SKELETONS, v.get('skeleton'))) for pid, v in zip(ids, vis)), '',
-           '| 页 | 标题 | 这一页要说清 | 信息结构 | 画法 | 视觉焦点 | 构图骨架 | 配图母题 |', '|---|---|---|---|---|---|---|---|']
+           '密度节奏（■ 高密度，· 低密度）：' + ' '.join('%s%s' % (pid.upper(), mark(p)) for pid, p in zip(ids, pages)), '',
+           '| 页 | 标题 | 这一页要说清 | 信息结构 | 画法 | 视觉焦点 | 构图骨架 | 字数 / 条数（上限） | 配图母题 |',
+           '|---|---|---|---|---|---|---|---|---|']
     cell = lambda s: str(s or '—').replace('|', '｜').replace('\n', ' ')
     for pid, p, v in zip(ids, pages, vis):
-        out.append('| %s | %s | %s | %s | %s | %s | %s | %s |' % (
+        body, n, _ = E.page_load(p)
+        cap = E.CAPACITY.get(v.get('skeleton'), {}).get(mode)
+        load = '%d / %d' % (body, n) + ('（%d / %s）' % (cap[0], cap[1] if cap[1] < 99 else '—') if cap else '')
+        out.append('| %s | %s | %s | %s | %s | %s | %s | %s | %s |' % (
             pid.upper(), cell(p.get('title')), cell(v.get('message')), cell(label(E.STRUCTURES, v.get('structure'))),
-            cell(v.get('form')), cell(v.get('focal')), cell(label(E.SKELETONS, v.get('skeleton'))), cell(v.get('motif'))))
+            cell(v.get('form')), cell(v.get('focal')), cell(label(E.SKELETONS, v.get('skeleton'))), load, cell(v.get('motif'))))
     use = collections.OrderedDict()
     for pid, p, v in zip(ids, pages, vis):
         if v.get('skeleton'):
@@ -117,9 +189,10 @@ def plan_md(outline, errs, warns):
 def run(proj):
     """Check the plan, write 视觉规划.md; returns (errors, warnings, path)."""
     outline = E.load_outline(proj)
-    errs, warns = check(outline, E.load_project(proj))
+    cfg = E.load_project(proj)
+    errs, warns = check(outline, cfg)
     path = os.path.join(proj, E.D_WHITE, '视觉规划.md')
-    open(path, 'w', encoding='utf-8').write(plan_md(outline, errs, warns))
+    open(path, 'w', encoding='utf-8').write(plan_md(outline, errs, warns, cfg))
     return errs, warns, path
 
 

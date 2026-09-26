@@ -18,6 +18,9 @@ import hostos
 import visual
 import build_prompts
 import brand
+import storyline
+import gen_batch
+import slidereview
 
 
 def outline():
@@ -116,18 +119,27 @@ class TestApproval(unittest.TestCase):
             p.close()
 
 
-def direction(i, mode, dims, source='original', refs_=None):
+def direction(i, mode, dims, source='original', refs_=None, axes=None, cover=None, temperature='distinct'):
     return {'id': i, 'name': i, 'summary': 's', 'source': source, 'refs': refs_ or [], 'brand_fit': '品牌蓝作强调色',
             'light': 'Background: #FFFFFF',
             'dark': 'Background: #000000', 'imagery': 'x', 'imagery_mode': mode, 'tone': {'cover': 'dark'},
-            'dims': dict(zip(['typeface', 'palette', 'layout', 'imagery', 'texture'], dims)), '_path': '/nonexistent/%s/direction.json' % i}
+            'dims': dict(zip(['typeface', 'palette', 'layout', 'imagery', 'texture', 'diagram'], dims)),
+            'axes': dict(zip(['typeface', 'layout', 'texture', 'diagram', 'color_strategy'], axes)),
+            'cover': {'layout': cover[0], 'motif': cover[1]}, 'temperature': temperature,
+            '_path': '/nonexistent/%s/direction.json' % i}
 
 
 class TestDirections(unittest.TestCase):
     def good(self):
-        return [direction('A', 'photo', ['宋体', '深绿金', '杂志', '摄影', '纸纹']),
-                direction('B', 'graphic', ['黑体', '黑白', '网格', '图形', '平面']),
-                direction('C', 'illustration', ['楷体', '暖橙', '居中', '插画', '颗粒'])]
+        return [direction('A', 'photo', ['宋体', '深绿金', '杂志', '摄影', '纸纹', '发丝线'],
+                          axes=['serif_title', 'magazine_asym', 'paper', 'hairline', 'restrained'],
+                          cover=['左文右图', '产品静物特写'], temperature='safe'),
+                direction('B', 'graphic', ['黑体', '黑白', '网格', '图形', '平面', '实心色块'],
+                          axes=['sans_bold', 'swiss_grid', 'flat_print', 'solid', 'dominant'],
+                          cover=['纯文字大标题加色块', '无配图']),
+                direction('C', 'illustration', ['楷体', '暖橙', '居中', '插画', '颗粒', '手绘线'],
+                          axes=['rounded', 'centered', 'grain', 'hand_drawn', 'restrained'],
+                          cover=['满版插画上叠字', '夜晚卧室插画'])]
 
     def test_pass(self):
         errs, warns = directions.check(self.good())
@@ -152,6 +164,25 @@ class TestDirections(unittest.TestCase):
     def test_brand_fit_required(self):
         d = self.good(); d[1]['brand_fit'] = ''
         self.assertTrue(any('brand_fit' in e for e in directions.check(d)[0]))
+
+    def test_axes_cover_and_temperature(self):
+        d = self.good(); d[1]['axes']['layout'] = 'magazine_asym'
+        self.assertTrue(any('版式语法相同' in e for e in directions.check(d)[0]))
+        d = self.good(); d[2]['axes']['diagram'] = 'lines'
+        self.assertTrue(any('axes.diagram' in e for e in directions.check(d)[0]))
+        d = self.good(); d[1]['axes']['color_strategy'] = 'restrained'
+        self.assertTrue(any('配色策略' in e for e in directions.check(d)[0]))
+        d = self.good(); d[2]['cover']['layout'] = '左文 右图'
+        self.assertTrue(any('封面构图相同' in e for e in directions.check(d)[0]))
+        d = self.good()
+        for x in d:
+            x['temperature'] = 'safe'
+        self.assertTrue(any('行业常见款' in e for e in directions.check(d)[0]))
+        d = self.good(); d[0]['icons'] = 'many'; d[0]['allow'] = ['3d', 'shiny']
+        errs = directions.check(d)[0]
+        self.assertTrue(any('icons' in e for e in errs) and any('allow' in e for e in errs))
+        d = self.good(); del d[0]['cover']
+        self.assertTrue(any('缺少字段' in e and 'cover' in e for e in directions.check(d)[0]))
 
 
 BRAND_DONE = """# 品牌调研
@@ -180,6 +211,7 @@ BRAND_DONE = """# 品牌调研
 ## 六、对三个方向的约束
 
 强调色只用 #00B4D8；Logo 周围留出一个字高的空白
+行业常见款：浅蓝白底、产品三维渲染、科技感发光线条
 """
 
 
@@ -334,7 +366,7 @@ def planned(n_content, skeletons, structures=None):
               'visual': {'message': 'm', 'structure': 'claim', 'form': 'f0', 'focal': 'x', 'skeleton': 'hero'}}]
     for i in range(n_content):
         pages.append({'id': 'p%02d' % (i + 2), 'kind': 'content', 'title': '内容 %d' % i,
-                      'blocks': [{'type': 'bullets', 'items': ['甲', '乙'], 'visual': '两个节点'}],
+                      'blocks': [{'type': 'bullets', 'items': ['先把内容线跑通再放量投放', '达标之后再追加下个月预算'], 'visual': '两个节点'}],
                       'visual': {'message': 'm', 'structure': structures[i], 'form': 'f%d' % (i + 1), 'focal': 'x',
                                  'skeleton': skeletons[i]}})
     pages.append({'id': 'p%02d' % (n_content + 2), 'kind': 'closing', 'title': '封底',
@@ -465,6 +497,224 @@ class TestTextcheck(unittest.TestCase):
         self.assertNotIn('br', textcheck.corner_boxes(cfg, 1672, 941, False))
         self.assertEqual(build_prompts.reserved_corners(cfg, 1, 15), [])
         self.assertEqual(len(build_prompts.reserved_corners(cfg, 2, 15)), 1)
+
+
+def story(n_content=6, chapters=None):
+    """Cover + summary + content pages in chapters + closing, with sources, for the storyline checks."""
+    chapters = chapters or ['现状', '现状', '打法', '打法', '预算', '分工']
+    pages = [{'id': 'p01', 'kind': 'cover', 'title': '让新品进入搜索框'},
+             {'id': 'p02', 'kind': 'summary', 'title': '三件事决定首月成败', 'covers': list(dict.fromkeys(chapters))}]
+    for i, ch in enumerate(chapters[:n_content]):
+        pages.append({'id': 'p%02d' % (i + 3), 'kind': 'content', 'chapter': ch, 'title': '判断 %d 已经成立' % i,
+                      'source': [ch], 'blocks': [{'type': 'bullets', 'items': ['第 %d 条依据写在这里' % i]}]})
+    pages.append({'id': 'p%02d' % (len(pages) + 1), 'kind': 'closing', 'title': '三件事确认后下周起投'})
+    return {'title': 't', 'storyline': {'thesis': '先沉淀再放量'}, 'pages': pages}
+
+
+SRC = dict(files=['doc.md'], headings=[(1, '现状'), (1, '打法'), (2, '达人投放'), (1, '预算'), (1, '分工'), (1, '附录说明')],
+           text='现状 打法 达人投放 预算 分工 表3 渠道对比', names=['画板1_人群'], unread=[])
+
+
+class TestStoryline(unittest.TestCase):
+    def test_pass_and_coverage(self):
+        o = story()
+        errs, warns = storyline.check(o, {}, SRC)
+        self.assertEqual(errs, ['原文「附录说明」没有对应的页：补进大纲，或写进 storyline.dropped 并说明理由'])
+        o['storyline']['dropped'] = [{'source': '附录说明', 'reason': '方法说明，与结论无关'}]
+        self.assertEqual(storyline.check(o, {}, SRC)[0], [])
+        o['storyline']['dropped'] = [{'source': '附录说明', 'reason': ''}]
+        self.assertTrue(any('没有写不上屏的理由' in e for e in storyline.check(o, {}, SRC)[0]))
+
+    def test_sources(self):
+        o = story(); o['storyline']['dropped'] = ['附录说明：方法说明']
+        o['pages'][3]['source'] = ['不存在的小节']
+        o['pages'][4]['source'] = ['画板1']                   # a file next to the source document
+        o['pages'][5]['source'] = ['补充：客户口头说明']
+        o['pages'][6]['source'] = ['表3']
+        errs = storyline.check(o, {}, SRC)[0]
+        self.assertEqual([e for e in errs if 'source' in e], ['p04 的 source「不存在的小节」在原文的标题、正文和同目录文件里都找不到'])
+        del o['pages'][7]['source']
+        self.assertTrue(any('p08 没有写 source' in e for e in storyline.check(o, {}, SRC)[0]))
+        self.assertFalse(any('source' in e for e in storyline.check(o, {}, None)[0]))   # no readable source: skipped
+
+    def test_structure_rules(self):
+        o = story(); o['storyline']['dropped'] = ['附录说明：方法说明']
+        o['pages'][4]['chapter'] = '预算'                    # 现状 / 预算 / 打法 … 预算: split chapter
+        errs = storyline.check(o, {}, SRC)[0]
+        self.assertTrue(any('章节「预算」分成了不相邻的 2 段' in e for e in errs))
+        o = story(); o['storyline']['dropped'] = ['附录说明：方法说明']
+        o['pages'][-1]['title'] = '谢谢！'
+        o['pages'][3]['title'] = '接下来我们看现状'
+        o['pages'][1]['covers'] = ['打法', '现状', '预算', '分工']
+        del o['storyline']['thesis']
+        errs = storyline.check(o, {}, SRC)[0]
+        for k in ('封底标题是「谢谢！」', '在描述这份稿子本身', '执行摘要的 covers 顺序', 'storyline.thesis'):
+            self.assertTrue(any(k in e for e in errs), k)
+
+    def test_appendix_and_agenda(self):
+        o = story(); o['storyline']['dropped'] = ['附录说明：方法说明']
+        o['pages'].insert(1, {'id': 'pa', 'kind': 'agenda', 'title': '目录', 'blocks': [{'type': 'steps', 'items': ['现状', '打法', '预算']}]})
+        o['pages'].append({'id': 'px', 'kind': 'appendix', 'chapter': '附录', 'title': '预算明细', 'source': ['预算']})
+        o['pages'][4]['blocks'].append({'type': 'text', 'text': '明细见附录 A2'})
+        errs = storyline.check(o, {}, SRC)[0]
+        self.assertTrue(any('目录没有列出章节：分工' in e for e in errs))
+        self.assertTrue(any('附录 A2' in e for e in errs))
+        o['pages'].insert(3, {'id': 'py', 'kind': 'appendix', 'chapter': '附录', 'title': '放错位置', 'source': ['预算']})
+        self.assertTrue(any('附录页要放在封底之后' in e or '附录页要连续' in e for e in storyline.check(o, {}, SRC)[0]))
+
+    def test_kpi_consistency(self):
+        o = story(); o['storyline']['dropped'] = ['附录说明：方法说明']
+        o['pages'][2]['blocks'].append({'type': 'kpis', 'items': [{'value': '310 万元', 'label': '三个月预算'}]})
+        o['pages'][6]['blocks'].append({'type': 'kpis', 'items': [{'value': '300 万元', 'label': '三个月预算'}]})
+        self.assertTrue(any('数值不一致' in e for e in storyline.check(o, {}, SRC)[0]))
+
+    def test_source_readers(self):
+        self.assertEqual(storyline.md_headings('# 一\n正文\n## 二 ##\n'), [(1, '一'), (2, '二')])
+        d = tempfile.mkdtemp(prefix='did_docx_')
+        try:
+            import zipfile
+            p = os.path.join(d, 'a.docx')
+            with zipfile.ZipFile(p, 'w') as z:
+                z.writestr('word/styles.xml', '<w:styles><w:style w:type="paragraph" w:styleId="1"><w:name w:val="heading 1"/></w:style></w:styles>')
+                z.writestr('word/document.xml', '<w:document><w:body><w:p><w:pPr><w:pStyle w:val="1"/></w:pPr><w:r><w:t>渠道现状</w:t></w:r></w:p>'
+                                                 '<w:p><w:r><w:t>正文一段</w:t></w:r></w:p></w:body></w:document>')
+            heads, text = storyline.docx_read(p)
+            self.assertEqual(heads, [(1, '渠道现状')])
+            self.assertIn('正文一段', text)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+class TestCapacity(unittest.TestCase):
+    def page(self, skeleton, n_items, chars=10, kind='content'):
+        return {'id': 'p02', 'kind': kind, 'title': '标题',
+                'blocks': [{'type': 'bullets', 'items': ['字' * chars] * n_items}],
+                'visual': {'message': 'm', 'structure': 'flow', 'form': 'f', 'focal': 'x', 'skeleton': skeleton}}
+
+    def test_mode_budgets(self):
+        o = {'pages': [self.page('hero', 4, 15)]}                                  # 60 characters, 5 strings
+        self.assertEqual(visual.capacity(o, {'deck_mode': 'read'})[0], [])
+        errs = visual.capacity(o, {'deck_mode': 'present'})[0]
+        self.assertTrue(any('正文 60 字（上限 40）' in e for e in errs))
+        o = {'pages': [self.page('diagram', 30, 5)]}
+        self.assertTrue(any('31 条文字（上限 28）' in e for e in visual.capacity(o, {})[0]))
+
+    def test_table_and_title(self):
+        p = self.page('table', 1)
+        p['blocks'] = [{'type': 'table', 'header': ['a'] * 6, 'rows': [['1'] * 6] * 3}]
+        p['title'] = '字' * 31
+        errs = visual.capacity({'pages': [p]}, {})[0]
+        self.assertTrue(any('3 行 × 6 列' in e for e in errs))
+        self.assertTrue(any('标题 31 字' in e for e in errs))
+
+    def test_present_rhythm(self):
+        pages = [self.page(sk, 3, 20) for sk in ('split', 'diagram', 'cards', 'bands')]
+        errs = visual.capacity({'pages': pages}, {'deck_mode': 'present'})[0]
+        self.assertTrue(any('连续 4 页高密度' in e for e in errs))
+        pages[2] = self.page('bignum', 1, 20)
+        self.assertEqual([e for e in visual.capacity({'pages': pages}, {'deck_mode': 'present'})[0] if '密度' in e], [])
+
+    def test_appendix_labels_and_max_pages(self):
+        pages = [{'kind': 'cover'}, {'kind': 'content'}, {'kind': 'closing'}, {'kind': 'appendix'}, {'kind': 'appendix'}]
+        self.assertEqual(E.page_labels({'page_number': {'corner': 'br'}}, pages), ['', '02', '', 'A1', 'A2'])
+        self.assertEqual(E.page_labels({'page_number': {'corner': 'br'}}, 3), ['', '02', ''])
+        o = planned(2, ['split', 'diagram'])
+        o['pages'].append({'id': 'p99', 'kind': 'appendix', 'title': '附录',
+                           'visual': {'message': 'm', 'structure': 'list', 'form': 'fa', 'focal': 'x', 'skeleton': 'table'}})
+        self.assertFalse(any('max_pages' in e for e in visual.check(o, {'max_pages': 4})[0]))
+
+
+class TestPromptV2(unittest.TestCase):
+    def setUp(self):
+        self.cfg = E.load_project(tempfile.mkdtemp(prefix='did_cfg_'))
+        self.o = planned(2, ['split', 'diagram'], ['flow', 'loop'])
+        self.o['pages'][0].update(layout_hint='标题左对齐，右侧产品特写', image_hint='枕头切面')
+
+    def test_cover_from_direction(self):
+        d = {'name': 'D', 'light': 'Background: #FFFFFF', 'dark': 'Background: #000000',
+             'cover': {'layout': '满版照片上叠超大标题', 'motif': '清晨卧室'}}
+        text = build_prompts.build(self.cfg, self.o, self.o['pages'][0], 1, 4, d)[1]
+        self.assertIn('Composition: 满版照片上叠超大标题', text)
+        self.assertIn('Imagery for this slide: 清晨卧室', text)
+        self.assertNotIn('右侧产品特写', text)
+        self.assertNotIn('Draw it as: f0', text)                            # the outline's cover drawing is replaced too
+        text = build_prompts.build(self.cfg, self.o, self.o['pages'][1], 2, 4, d)[1]
+        self.assertNotIn('满版照片上叠超大标题', text)                     # content slides keep their own layout
+
+    def test_icons_and_avoid(self):
+        d = {'name': 'D', 'light': 'x', 'dark': 'y'}
+        text = build_prompts.build(self.cfg, self.o, self.o['pages'][1], 2, 4, d)[1]
+        self.assertIn('draw no icons or pictograms', text)
+        self.assertIn('glossy plastic 3D objects', text)
+        self.assertIn('no photograph and no icons', build_prompts.build(self.cfg, self.o, self.o['pages'][2], 3, 4, d)[1])
+        d.update(icons='planned', imagery_mode='3d')
+        text = build_prompts.build(self.cfg, self.o, self.o['pages'][1], 2, 4, d)[1]
+        self.assertIn('only where the drawing directions name one', text)
+        self.assertNotIn('glossy plastic 3D objects', text)
+        d = {'name': 'D', 'light': 'x', 'dark': 'y', 'allow': ['glass']}
+        self.assertNotIn('glassmorphism', build_prompts.build(self.cfg, self.o, self.o['pages'][1], 2, 4, d)[1])
+
+    def test_skeleton_ref_plan(self):
+        index = {p: dict(n=i, kind='content', skeleton=sk) for i, (p, sk) in
+                 enumerate([('p02', 'diagram'), ('p03', 'split'), ('p04', 'diagram'), ('p05', 'hero'), ('p06', 'diagram')], 2)}
+        index['p01'] = dict(n=1, kind='cover', skeleton='hero')
+        anchors, first = gen_batch.plan_skeleton_refs(index, list(index), {})
+        self.assertEqual((anchors, first), ({}, ['p02']))                 # only diagram is used twice or more
+        anchors, first = gen_batch.plan_skeleton_refs(index, ['p04'], {'p02': '/x/p02_v1.png'})
+        self.assertEqual((anchors, first), ({'diagram': '/x/p02_v1.png'}, []))
+
+
+class TestTextcheckV2(unittest.TestCase):
+    def setUp(self):
+        try:
+            import textcheck
+        except ImportError:
+            self.skipTest('Pillow not installed')
+        self.tc = textcheck
+
+    def test_extra_text(self):
+        box = lambda t: {'text': t, 'x0': 0, 'y0': 0, 'x1': 100, 'y1': 30}
+        strings = ['内容产出 A3，打包推给投放端', '小红书效果有滞后，2027 年起持续投放']
+        lines = [box('内容产出 A3，'), box('打包推给投放端'), box('小红书效果有滯后，'), box('內容产出'), box('内容端'), box('32%'),
+                 box('Q'), box('STRATEGY'), box('每周复盘')]
+        self.assertEqual(self.tc.extra_text(strings, lines), ['内容端', '32%', 'STRATEGY', '每周复盘'])
+
+    def test_drift(self):
+        rep = {p: {'title_box': [0.036, 0.10, 0.9, 0.2, 0.078]} for p in ('p02', 'p03', 'p04', 'p05')}
+        rep['p06'] = {'title_box': [0.036, 0.16, 0.9, 0.26, 0.078]}
+        rep['p07'] = {'title_box': [0.036, 0.10, 0.9, 0.2, 0.055]}
+        idx = {p: {'tone': 'light', 'kind': 'content'} for p in rep}
+        d = self.tc.drift(rep, idx)
+        self.assertEqual(sorted(d), ['p06', 'p07'])
+        self.assertIn('偏低', d['p06']); self.assertIn('字高', d['p07'])
+
+    def test_locate(self):
+        box = lambda t, x0, y0: {'text': t, 'x0': x0, 'y0': y0, 'x1': x0 + 20 * len(t), 'y1': y0 + 30}
+        lines = [box('标题在这里', 10, 10), box('约 250 条达人內容', 10, 100)]
+        self.assertEqual(self.tc.locate('约 250 条达人内容', lines), [10, 100, 10 + 20 * len('约 250 条达人內容'), 130])
+        self.assertIsNone(self.tc.locate('完全不相干的一句话', lines))
+
+
+class TestSlideReview(unittest.TestCase):
+    def test_init_and_check(self):
+        p = Project(planned(3, ['split', 'diagram', 'bignum'], ['flow', 'loop', 'kpi']))
+        try:
+            raw = os.path.join(p.dir, E.D_GEN, 'raw'); os.makedirs(raw)
+            json.dump({pid: '%s_v1.png' % pid for pid in ('p01', 'p02', 'p03', 'p04', 'p05')}, open(os.path.join(raw, 'selected.json'), 'w'))
+            jp = slidereview.init(p.dir, '', raw)
+            with self.assertRaises(SystemExit):
+                slidereview.check(p.dir, raw)                            # nothing answered yet
+            entries = json.load(open(jp, encoding='utf-8'))
+            for i, e in enumerate(entries):
+                e['answers'] = {k: True for k, _ in slidereview.QUESTIONS}
+                e['verdict'] = 'regen' if i < 3 else 'pass'
+                e['problems'] = [{'type': 'icons', 'note': '行首线描图标'}] if i < 3 else []
+            json.dump(entries, open(jp, 'w', encoding='utf-8'), ensure_ascii=False)
+            _, wide = slidereview.check(p.dir, raw)
+            self.assertEqual(wide, {'icons': ['p01', 'p02', 'p03']})
+            self.assertEqual(json.load(open(slidereview.init(p.dir, '', raw), encoding='utf-8'))[0]['verdict'], 'regen')   # kept
+        finally:
+            p.close()
 
 
 class TestHostos(unittest.TestCase):

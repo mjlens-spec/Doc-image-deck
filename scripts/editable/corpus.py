@@ -2,7 +2,8 @@
 """Step 2 (optional) · Build a reference-copy corpus used to correct OCR (dropped / misread characters).
 
 Usage: corpus.py <workdir> <file-or-folder> [...]
-       corpus.py <workdir> --outline <outline.json>   (per-page copy from the whiteboard deck; authoritative)
+       corpus.py <workdir> --outline <outline.json>   (per-page copy from the whiteboard deck; authoritative; the big
+                                                       numbers of kpis blocks are kept apart for layers.split_kpi)
 Reads every .txt / .md / .json under the given paths and keeps short text segments (lines, table
 cells, quoted strings). Output: <workdir>/corpus.json
 """
@@ -13,8 +14,9 @@ if len(sys.argv) > 3 and sys.argv[2] == '--outline':
     import deckenv as E
     outline = json.load(open(sys.argv[3], encoding='utf-8'))
     pages = {pid: [t for _, t in E.page_strings(pg)] for pid, pg in zip(E.page_ids(outline), outline['pages'])}
-    json.dump({'authoritative': True, '_pages': pages, '_all': []}, open(os.path.join(work, 'corpus.json'), 'w', encoding='utf-8'),
-              ensure_ascii=False, indent=0)
+    kpis = {pid: [t for r, t in E.page_strings(pg) if r == 'big number'] for pid, pg in zip(E.page_ids(outline), outline['pages'])}
+    json.dump({'authoritative': True, '_pages': pages, '_kpis': {k: v for k, v in kpis.items() if v}, '_all': []},
+              open(os.path.join(work, 'corpus.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
     print('pages:', len(pages), 'strings:', sum(len(v) for v in pages.values()))
     sys.exit(0)
 segs = set()

@@ -164,7 +164,7 @@ def draw_block(slide, b, x, y, w, s):
     else:
         textbox(slide, x, y, w, blk_height(b, s, w), [[(b.get('text', ''), s, False, INK)]])
 
-def render_page(prs, page, n, total):
+def render_page(prs, page, n, total, label=None):
     s = prs.slides.add_slide(prs.slide_layouts[6])
     kind = page.get('kind', 'content')
     if kind in ('cover', 'closing', 'section'):
@@ -210,8 +210,11 @@ def render_page(prs, page, n, total):
             textbox(s, ML, ty + 0.1, CW, 0.45, [[(page['takeaway'], 15, True, INK)]])
         if page.get('footnote'):
             textbox(s, ML, 6.75, CW - 1.0, 0.3, [[(page['footnote'], 9, False, GREY)]])
-    textbox(s, W_IN - MR - 1.0, 7.05, 1.0, 0.25, [[('%d / %d' % (n, total), 9, False, GREY)]], align=PP_ALIGN.RIGHT)
+    textbox(s, W_IN - MR - 1.5, 7.05, 1.5, 0.25, [[(label or '%d / %d' % (n, total), 9, False, GREY)]], align=PP_ALIGN.RIGHT)
     notes = []
+    if page.get('chapter') or page.get('source'):
+        src = page.get('source')
+        notes.append('【章节】%s｜【来源】%s' % (page.get('chapter') or '—', '、'.join(src) if isinstance(src, list) else (src or '—')))
     v = page.get('visual') if isinstance(page.get('visual'), dict) else {}
     if v:
         notes.append('【视觉】%s｜%s｜%s｜焦点：%s｜%s' % (
@@ -232,6 +235,9 @@ def outline_md(outline):
     out = ['# ' + outline.get('title', ''), '']
     for i, p in enumerate(outline['pages'], 1):
         out.append('## P%02d %s' % (i, p.get('title', '')))
+        if p.get('chapter') or p.get('source'):
+            src = p.get('source')
+            out.append('> 章节：%s；来源：%s' % (p.get('chapter') or '—', '、'.join(src) if isinstance(src, list) else (src or '—')))
         for role, t in E.page_strings(p):
             if role != 'title':
                 out.append('- %s：%s' % (role, t))
@@ -251,9 +257,10 @@ def render(proj):
     outline = E.load_outline(proj)
     prs = Presentation(); prs.slide_width, prs.slide_height = E.SW, E.SH
     total = len(outline['pages'])
+    labels = E.page_labels({'page_number': {'corner': 'br', 'skip_first': False, 'skip_last': False}}, outline['pages'])
     for n, page in enumerate(outline['pages'], 1):
         page.setdefault('id', 'p%02d' % n)
-        render_page(prs, page, n, total)
+        render_page(prs, page, n, total, '附录 %s' % labels[n - 1] if page.get('kind') == 'appendix' else None)
     prs.core_properties.title = outline.get('title', cfg['name']) + '（白板稿）'
     out = os.path.join(proj, E.D_WHITE, E.out_name(cfg, '白板稿', 'pptx'))
     prs.save(out)
@@ -269,6 +276,14 @@ def main():
         raise SystemExit('还有 %d 条文案没有做去 AI 味处理（如 %s）。先运行 deck humanize <项目> export%s，按 humanizer-zh 处理后 import；'
                          '用户指定原话的条目用 deck humanize <项目> accept --note "说明"。'
                          % (len(todo), todo[0][0], ' --changed' if humanize.load_done(proj) else ''))
+    import storyline
+    serrs, swarns, spath = storyline.run(proj)
+    for w in swarns:
+        print('故事线提示：' + w)
+    if serrs:
+        raise SystemExit('故事线未通过（%s）：\n  %s\n按 references/01_白板稿.md「故事线」修改 outline.json，再运行 deck storyline <项目>。'
+                         % (spath, '\n  '.join(serrs)))
+    print('%s（通过）' % spath)
     if '--no-punct' not in sys.argv:
         import punct
         changes, _, mixed = punct.run(proj)
@@ -281,7 +296,7 @@ def main():
     for e in errs:
         print('视觉规划 ✗ ' + e)
     print('%s（%s）' % (plan, '未通过，deck prompts 会拒绝运行' if errs else '通过'))
-    print('下一步：把白板稿发给用户确认（确认点 1），同时用 deck refs 找视觉参考一并询问；用户确认后运行 deck approve。')
+    print('下一步：把故事线.md 和白板稿发给用户确认（确认点 1），同时用 deck refs 找视觉参考一并询问；用户确认后运行 deck approve。')
 
 if __name__ == '__main__':
     main()

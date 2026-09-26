@@ -271,6 +271,105 @@ def apply_height_splits(img, segs):
         out += parts if ok else [s]
     return out
 
+KPI_RE = re.compile(r'^\s*(\D*?)\s*([+\-−±~≈]?\d[\d.,]*\s*[%‰]?)\s*(\D*?)\s*$')
+
+def kpi_parts(value):
+    """('约', '250', '条') for a big number with a Chinese prefix or unit, else None ('+96%', '92.3%' stay whole)."""
+    m = KPI_RE.match(value or '')
+    if not m:
+        return None
+    pre, core, suf = m.group(1).strip(), m.group(2).strip(), m.group(3).strip()
+    if not (re.search(r'[\u4e00-\u9fff]', pre) or re.search(r'[\u4e00-\u9fff]', suf)):
+        return None
+    return pre, core, suf
+
+def split_kpi(img, seg, value):
+    """A big number with a smaller Chinese prefix / unit from a kpis block ('约 250 条', '310 万元'): OCR often reads
+    it as one line (set at the number's size, so the parts collide) and may leave the small prefix outside its box.
+    Find the ink clusters around the line, take the tall ones as the number and the shorter ones sitting on the same
+    baseline to its left / right as prefix / unit, and return one segment per part with the whiteboard text; None
+    when the parts do not differ in size (then the line is fitted as one)."""
+    parts = kpi_parts(value)
+    if not parts or not seg.get('box'):
+        return None
+    pre, core, suf = parts
+    H, W, _ = img.shape
+    x0, y0, x1, y1 = [float(v) for v in seg['box']]
+    h = max(8.0, y1 - y0)
+    X0 = int(max(0, x0 - (1.8 * h if pre else 0.2 * h))); X1 = int(min(W, x1 + (0.9 * h * max(1, len(suf)) + 0.4 * h if suf else 0.2 * h)))
+    Y0 = int(max(0, y0 - 0.06 * h)); Y1 = int(min(H, y1 + 0.03 * h))    # the line only: captions above / below would join the glyph columns
+    crop = img[Y0:Y1, X0:X1]
+    bg = local_bg(crop, h)
+    d = np.sqrt(((crop.astype(np.float32) - bg.astype(np.float32)) ** 2).sum(-1))
+    ink = d > max(14, 0.33 * np.percentile(d, 99.5))
+    lab, n = ndi.label(ink)
+    for k, sl in enumerate(ndi.find_objects(lab), 1):     # drop rules, dividers and specks, keep glyph strokes
+        if sl is None:
+            continue
+        ch, cw = sl[0].stop - sl[0].start, sl[1].stop - sl[1].start
+        if (lab[sl] == k).sum() < 12 or (ch < 0.12 * h and cw > 1.2 * h) or (cw < 0.05 * h and ch > 0.9 * h):
+            ink[sl][lab[sl] == k] = False
+    # glyphs: runs of inked columns (a digit whose strokes break into pieces is still one run), with their extent
+    cols = ink.any(0); info, st = [], None
+    for i, v in enumerate(list(cols) + [False]):
+        if v and st is None: st = i
+        if not v and st is not None:
+            r = np.where(ink[:, st:i].any(1))[0]
+            info.append(dict(x0=X0 + st, x1=X0 + i, top=Y0 + r[0], bot=Y0 + r[-1] + 1)); st = None
+    merged = []
+    for c in info:                                         # join runs split by a hair-thin gap inside one glyph
+        if merged and c['x0'] - merged[-1]['x1'] < 0.03 * h:
+            m = merged[-1]; m.update(x1=c['x1'], top=min(m['top'], c['top']), bot=max(m['bot'], c['bot']))
+        else:
+            merged.append(dict(c))
+    info = merged
+    if not info:
+        return None
+    inside = [c for c in info if c['x1'] > x0 and c['x0'] < x1]
+    if not inside:
+        return None
+    tall = max(c['bot'] - c['top'] for c in inside)
+    core_cl = [c for c in inside if c['bot'] - c['top'] >= 0.7 * tall]
+    cx0, cx1 = min(c['x0'] for c in core_cl), max(c['x1'] for c in core_cl)
+    ctop = min(c['top'] for c in core_cl)
+    base = float(np.median([c['bot'] for c in core_cl]))
+    small = lambda c: c['top'] > ctop + 0.18 * tall and abs(c['bot'] - base) < 0.25 * tall
+    def side(cands, toward, sign):
+        got, edge = [], toward
+        for c in cands:
+            gap = (edge - c['x1']) if sign < 0 else (c['x0'] - edge)
+            if not small(c):
+                if gap > 0:
+                    break
+                continue                                   # overlaps what we have (a stroke of the same glyph)
+            if gap > 0.6 * tall:
+                break
+            got.append(c)
+            edge = min(edge, c['x0']) if sign < 0 else max(edge, c['x1'])
+        return got
+    left = side(sorted([c for c in info if c['x1'] <= cx0 + 2], key=lambda c: -c['x1']), cx0, -1) if pre else []
+    right = side(sorted([c for c in info if c['x0'] >= cx1 - 2], key=lambda c: c['x0']), cx1, 1) if suf else []
+    core_all = [c for c in info if c['x0'] >= cx0 - 1 and c['x1'] <= cx1 + 1]
+    if (pre and not left) or (suf and not right):
+        return None
+    # the prefix / unit glyphs should span about one em per character at their own height
+    for text, cs in ((pre, left), (suf, right)):
+        if text and cs:
+            span = max(c['x1'] for c in cs) - min(c['x0'] for c in cs)
+            gh = max(c['bot'] for c in cs) - min(c['top'] for c in cs)
+            if not 0.45 * len(text) * gh <= span <= 1.6 * len(text) * gh:
+                return None
+    out = []
+    for text, cs, extra in ((pre, left, dict(pad_r=0.02)), (core, core_all, dict(pad_l=0.02, pad_r=0.02)), (suf, right, dict(pad_l=0.02))):
+        if not text:
+            continue
+        bx = [min(c['x0'] for c in cs), min(c['top'] for c in cs), max(c['x1'] for c in cs), max(c['bot'] for c in cs)]
+        n = len(text)
+        step = (bx[2] - bx[0]) / max(1, n)
+        chars = [(ch, [bx[0] + k * step, bx[1], bx[0] + (k + 1) * step, bx[3]]) for k, ch in enumerate(text)]
+        out.append(dict(text=text, box=bx, conf=1.0, chars=chars, split='kpi', kpi=True, exact=True, **extra))
+    return out
+
 def disputed_positions(text, reads):
     """Indices of text (excluding spaces) where at least one crop reading disagrees (substitution / missing)."""
     idx = [i for i, c in enumerate(text) if not c.isspace()]
@@ -359,6 +458,7 @@ class CorpusSet:
             self.all = Corpus(data.get('_all', [])) if data.get('_all') else None
             self.pages = {k: Corpus(v) for k, v in data.get('_pages', {}).items()}
             self.auth = bool(data.get('authoritative')) or bool(CFG.get('corpus_authoritative'))
+        self.kpis = {} if isinstance(data, list) else data.get('_kpis', {})
 
     def match(self, pid, text):
         """-> (match tuple or None, authoritative?)"""
@@ -460,11 +560,23 @@ def spaced_track(text, fam, w, px, wm, extra, pq=0.0):
 
 MAX_NEG_TRACK = 0.06        # tightest tracking, as a share of the font size, before glyphs start to collide
 
-def cap_tracking(text, fam, w, px, wm, extra, pq=0.0):
+MAX_ROOM = CFG.get('max_room', 0.10)   # a line may run this share wider than the original ink before its size is reduced
+
+def cap_tracking(text, fam, w, px, wm, extra, pq=0.0, room=0.0):
     """Generated headline faces are often narrower than Noto: matching their width by tracking alone needs 15-20 %
-    negative tracking and the glyphs collide. Keep tracking at or above -MAX_NEG_TRACK of the size and shrink the
-    size instead. Returns (px, track)."""
+    negative tracking and the glyphs collide. Keep tracking at or above -MAX_NEG_TRACK of the size; first let the line
+    run wider than the original into the free space on its right (room, at most MAX_ROOM of the width), and shrink
+    the size only for what is still missing. The room is used only when the size would otherwise drop by more than
+    5 % (a narrow headline face); smaller cuts keep the line on the original width. Returns (px, track)."""
+    if room > 0:
+        px0, tr0 = cap_tracking(text, fam, w, px, wm, extra, pq)
+        if px0 >= 0.95 * px:
+            return px0, tr0
     track = spaced_track(text, fam, w, px, wm, extra, pq)
+    if track is not None and track < -MAX_NEG_TRACK * px and room > 0:
+        need = (-MAX_NEG_TRACK * px - track) * max(1, len(text) - 1)
+        wm += min(need, room, MAX_ROOM * wm)
+        track = spaced_track(text, fam, w, px, wm, extra, pq)
     for _ in range(6):
         if track is None or track >= -MAX_NEG_TRACK * px:
             break
@@ -590,13 +702,23 @@ def fit_segment(img, seg, W, H, families):
     pad = int(0.35 * h) + 4
     X0, Y0, X1, Y1 = max(0, int(x0) - pad), max(0, int(y0) - pad), min(W, int(np.ceil(x1)) + pad), min(H, int(np.ceil(y1)) + pad)
     crop = img[Y0:Y1, X0:X1]
+    box_m = np.zeros(crop.shape[:2], bool)
+    box_m[max(0, int(y0) - Y0):int(np.ceil(y1)) - Y0, max(0, int(x0) - X0):int(np.ceil(x1)) - X0] = True
     bg = local_bg(crop, h)
+    ring = crop[~box_m]
+    if len(ring) > 200:
+        # big figures with thick strokes fill most of the median window, which then returns the text colour as the
+        # background; when the ring around the line is one flat colour and the estimate inside drifted away from
+        # it, take the ring colour
+        c_r = np.median(ring, 0)
+        mad_r = float(np.median(np.abs(ring.astype(np.float32) - c_r).max(-1)))
+        drift_r = float((np.sqrt(((bg[box_m].astype(np.float32) - c_r) ** 2).sum(-1)) > 40).mean())
+        if mad_r < 12 and drift_r > 0.15:
+            bg = np.broadcast_to(c_r.astype(crop.dtype), crop.shape)
     d = np.sqrt(((crop.astype(np.float32) - bg.astype(np.float32)) ** 2).sum(-1))
     d_loc = d
     # flat panel or banner: the local median is pulled toward the text colour when text fills the panel,
     # so use one background colour for the line when the non-text pixels around it are uniform
-    box_m = np.zeros(d.shape, bool)
-    box_m[max(0, int(y0) - Y0):int(np.ceil(y1)) - Y0, max(0, int(x0) - X0):int(np.ceil(x1)) - X0] = True
     pre_ink = d > max(14, 0.33 * np.percentile(d[box_m], 99.5))
     bgpix = crop[box_m & ~ndi.binary_dilation(pre_ink, iterations=max(2, int(0.06 * h)))]
     if len(bgpix) > 50:
@@ -607,7 +729,7 @@ def fit_segment(img, seg, W, H, families):
             bg = np.broadcast_to(c0.astype(crop.dtype), crop.shape)
     # restrict to the OCR glyph boxes (+ a little) so neighbouring icons / rules / ornaments are not taken as ink
     lim = np.zeros_like(d, bool)
-    mx = int(0.12 * h) + 2; my = int(0.07 * h) + 2
+    mx = 2 if seg.get('kpi') else int(0.12 * h) + 2; my = int(0.07 * h) + 2      # kpi parts: their neighbours are other parts
     lim[max(0, int(y0) - Y0 - (0 if seg.get('cut_top') else my)): int(np.ceil(y1)) - Y0 + (0 if seg.get('cut_bottom') else my),
         max(0, int(x0) - X0 - mx): int(np.ceil(x1)) - X0 + mx] = True
     dmax = np.percentile(d[lim], 99.5)
@@ -827,7 +949,7 @@ def fit_segment(img, seg, W, H, families):
     occ = ink[iy0:iy1, ix0:ix1].any(0)
     text, track, sp_extra, col_iou, pq = fit_spacing(text, fam, w, px, occ, exact=bool(seg.get('exact')))
     if track < -MAX_NEG_TRACK * px:
-        px2, track = cap_tracking(text, fam, w, px, ix1 - ix0, sp_extra, pq)
+        px2, track = cap_tracking(text, fam, w, px, ix1 - ix0, sp_extra, pq, seg.get('room', 0.0))
         px_scale *= px2 / px; px = px2
     n = len(text)
     rt = render(text, fam, w, px, 0, track_runs=track_list(text, track, sp_extra, pq))
@@ -868,6 +990,7 @@ def fit_segment(img, seg, W, H, families):
                dist=dist, alt=[(round(c[0], 3), c[1], c[2]) for c in cands[:3]], contrast=(round(osig[0] / osig[1], 3) if osig else None),
                cand={'%s|%s' % (c[1], c[2]): round(float(c[0]), 4) for c in cands},
                fam_score={k: round(v, 3) for k, v in fam_score.items()}, bg_std=bgstd, cjk=cjk)
+    res['room'] = seg.get('room', 0.0)
     res['_ink'] = (ink, obs, X0, Y0)
     return res, 'ok'
 
@@ -886,7 +1009,7 @@ def refit(f, fam, w, px=None):
     if track is None:
         return
     if track < -MAX_NEG_TRACK * px:
-        px, track = cap_tracking(text, fam, w, px, ix1 - ix0, e, q)
+        px, track = cap_tracking(text, fam, w, px, ix1 - ix0, e, q, f.get('room', 0.0))
     rt = render(text, fam, w, px, 0, track_runs=track_list(text, track, e, q))
     f.update(family=fam, weight=w, px=px, track_px=track, space_extra_px=e, punct_extra_px=q,
              base=(iy0 - rt['top'] + iy1 - rt['bot']) / 2.0, left=ix0 - rt['x0'])
@@ -1127,9 +1250,21 @@ def process(page, corpus):
     lines = ocr(path)
     json.dump(lines, open(os.path.join(od, 'ocr.json'), 'w'), ensure_ascii=False)
     segs = []
+    kpis = [v for v in (corpus.kpis.get(pid, []) if corpus is not None else []) if kpi_parts(v)]
     for L in lines:
         for sg in split_segments(L):
+            hit = next((v for v in kpis if re.sub(r'\D', '', kpi_parts(v)[1]) and
+                        re.sub(r'\D', '', kpi_parts(v)[1]) == re.sub(r'\D', '', sg['text']) and
+                        len(norm_map(sg['text'])[0]) <= len(norm_map(v)[0]) + 2), None)
+            parts = split_kpi(img, sg, hit) if hit and CFG.get('split_kpi', True) else None
+            if parts:
+                segs += parts
+                continue
             segs += split_by_height(img, sg, pcfg.get('split_points', [])) if CFG.get('split_by_height', True) else [sg]
+    kboxes = [s['box'] for s in segs if s.get('kpi')]
+    if kboxes:                                           # the small prefix / unit may also have been read as its own line
+        inside = lambda b, k: k[0] - 3 <= (b[0] + b[2]) / 2 <= k[2] + 3 and k[1] - 3 <= (b[1] + b[3]) / 2 <= k[3] + 3
+        segs = [s for s in segs if s.get('kpi') or not any(inside(s['box'], k) for k in kboxes)]
     segs = apply_height_splits(img, segs)
     excl = [tuple(b) for b in pcfg.get('exclude_boxes', [])]
     fits, skipped, fixes, draft_diffs = [], [], [], []
@@ -1138,8 +1273,11 @@ def process(page, corpus):
         raw = s['text']
         if excl and any(s['box'][0] >= b[0] and s['box'][1] >= b[1] and s['box'][2] <= b[2] and s['box'][3] <= b[3] for b in excl):
             skipped.append(dict(text=raw, box=s['box'], why='excluded')); continue
+        digits = sum(c.isdigit() for c in raw) / max(1, len(raw.replace(' ', '')))
+        if s['box'][3] - s['box'][1] > CFG.get('giant_frac', 0.18) * H and digits >= 0.6:
+            skipped.append(dict(text=raw, box=s['box'], why='giant')); continue      # giant figures: LaMa leaves a halo
         nm = norm_map(raw)[0]
-        if not nm or (len(nm) == 1 and (s['conf'] < 0.6 or not re.match(r'[一-鿿A-Za-z0-9]', nm))):
+        if not s.get('kpi') and (not nm or (len(nm) == 1 and (s['conf'] < 0.6 or not re.match(r'[一-鿿A-Za-z0-9]', nm)))):
             skipped.append(dict(text=raw, box=s['box'], why='symbol')); continue
         nk = len(re.findall(r'[぀-ヿ가-힯]', raw))
         if nk >= 2 or nk > 0.2 * max(1, len(raw)):                  # kana / hangul: garbled UI text in a screenshot
@@ -1210,9 +1348,22 @@ def process(page, corpus):
                 x0 = max(x0, (ox1 + x0) / 2.0) if ox1 > x0 else x0
                 s['pad_l'] = min(s.get('pad_l', 0.6), max(0.02, (x0 - min(ox1, x0)) / 2.0 / max(1, h_)))
         s['box'] = [x0, y0, x1, y1]
+    for s in todo:                                     # free space on the right: a narrow headline may use it (cap_tracking)
+        x0, y0, x1, y1 = s['box']; h_ = y1 - y0
+        right = [o['box'][0] for o in segs if o is not s and o['box'][0] >= x1 - 0.2 * h_ and
+                 min(y1, o['box'][3]) - max(y0, o['box'][1]) > 0.3 * min(h_, o['box'][3] - o['box'][1])]
+        edge = min(right + [0.96 * W]) - 0.6 * h_
+        s['room'] = float(max(0.0, edge - x1)) if h_ >= CFG.get('room_min_frac', 0.045) * H else 0.0   # headlines only
     reads = crop_readings(Image.fromarray(img), todo, OCR_CMD) if CFG.get('ocr_vote', True) else [[] for _ in todo]
     for s, rd in zip(todo, reads):
         raw = s['text']
+        if s.get('kpi'):                                # text and boxes come from the whiteboard kpis block
+            f, why = fit_segment(img, s, W, H, families)
+            if f is None:
+                skipped.append(dict(text=raw, box=s['box'], why=why)); continue
+            f['ocr'] = raw; f['reads'] = rd; f['agree'] = True; f['kpi'] = True
+            fits.append(f)
+            continue
         text, voted = vote(raw, rd)
         via = ['vote'] if voted else []
         t2 = strip_ornaments(text)

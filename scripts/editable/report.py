@@ -8,7 +8,7 @@ from pptx.oxml.ns import qn
 
 work, deck = sys.argv[1], sys.argv[2]
 man = json.load(open(os.path.join(work, 'manifest.json')))
-WHY = {'excluded': '排除区（截图 / 海报 / 表情包等）', 'symbol': '单个符号', 'ornament': '装饰符号', 'garbled': '截图乱码',
+WHY = {'excluded': '排除区（截图 / 海报 / 表情包等）', 'symbol': '单个符号', 'giant': '超大数字（高于页高 18%，去字会留下光晕）', 'ornament': '装饰符号', 'garbled': '截图乱码',
        'too-small': '字高不足阈值', 'low-contrast': '对比度过低', 'no-ink': '未取到墨迹', 'no-fit': '字体未拟合'}
 rows, why_tot, style_tot = [], collections.Counter(), collections.Counter()
 fixes_tot = collections.Counter(); drafts = []

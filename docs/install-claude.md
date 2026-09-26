@@ -77,7 +77,7 @@ Windows（PowerShell）：
 cd ~/Doc-image-deck && git pull && python3 scripts/install.py --no-setup
 ```
 
-`--no-setup` 只同步 skill 文件。版本说明里提到运行环境有变化时，去掉这个参数重新运行，或运行 `deck setup`。
+`--no-setup` 只同步 skill 文件。版本说明里提到运行环境有变化时，去掉这个参数重新运行，或运行 `deck setup`。从 1.x 升到 2.0.0 运行环境没有变化，`--no-setup` 即可；进行中的 1.x 项目要在 `outline.json` 里补 `storyline.thesis` 和各页 `chapter`（原文是 Markdown 或 .docx 时还要补 `source`），见 CHANGELOG。
 
 ## 卸载
 

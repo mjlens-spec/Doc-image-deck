@@ -13,9 +13,9 @@ sys.path.insert(0, S)
 import hostos
 
 COMMANDS = {
-    'humanize': 'humanize.py', 'whiteboard': 'whiteboard.py', 'punct': 'punct.py', 'visual': 'visual.py', 'refs': 'refs.py',
+    'humanize': 'humanize.py', 'storyline': 'storyline.py', 'whiteboard': 'whiteboard.py', 'punct': 'punct.py', 'visual': 'visual.py', 'refs': 'refs.py',
     'approve': 'approve.py', 'brand': 'brand.py', 'logo': 'logo.py', 'directions': 'directions.py',
-    'prompts': 'build_prompts.py', 'gen': 'gen_batch.py', 'textcheck': 'textcheck.py', 'sheet': 'contact_sheet.py', 'compose': 'compose.py', 'pdf': 'editable/pptrender.py',
+    'prompts': 'build_prompts.py', 'gen': 'gen_batch.py', 'textcheck': 'textcheck.py', 'fix': 'fix.py', 'audit': 'slidereview.py', 'sheet': 'contact_sheet.py', 'compose': 'compose.py', 'pdf': 'editable/pptrender.py',
     'editable': 'editable/run_editable.py', 'layers': 'editable/run_pages.py', 'build': 'editable/build_pptx.py',
     'verify': 'editable/verify.py', 'review': 'editable/review_grid.py', 'proof': 'editable/proof_sheet.py',
     'zoom': 'editable/zoomcmp.py', 'qasheet': 'editable/qa_sheet.py', 'report': 'editable/report.py',
@@ -25,6 +25,7 @@ ANY_PYTHON = {'check': ('setup.py', ['--check']), 'setup': ('setup.py', []), 'im
 
 HELP = '''deck check                                   检查运行环境
 deck setup [--no-fonts] [--no-calib]         安装 / 修复运行环境
+deck storyline <项目>                          检查故事线（章节、原文来源与覆盖、首尾页、跨页数据），写故事线.md
 deck humanize <项目> export|import|accept|status   去 AI 味：文案交给 humanizer-zh 处理后写回
 deck whiteboard <项目> [--no-punct]           阶段 1：标点整理 + outline.json → 白板稿 PPTX（须先去 AI 味）
 deck punct <项目> [--check]                    标点整理：标题和短句去句号，详细描述保留
@@ -36,8 +37,11 @@ deck brand <项目> init|check                   品牌 VI 与 Logo 调研：生
 deck logo <项目> 图[::深底版] [图 ...] [--corner bl] [--height 0.32]   生成浅底 / 深底用（联合）Logo，写入 project.json
 deck directions <项目>                         检查品牌调研和三个方向，写方向说明.md
 deck prompts <项目> --direction <方向.json> --out <目录> [--pages p01,p05]
-deck gen <提示词目录> --out <生图目录> [--pages ..] [--ref-light 图] [--ref-dark 图] [--parallel 4]
-deck textcheck <项目> <提示词目录> <生图目录>     生图文字、预留角落与多出句号核对
+deck prompts ... [--corner-guide]              另附预留角落的定位图
+deck gen <提示词目录> --out <生图目录> [--pages ..] [--ref-light 图] [--ref-dark 图] [--skeleton-refs] [--parallel 4]
+deck textcheck <项目> <提示词目录> <生图目录>     生图文字核对：缺字、预留角落、多出文字、标题漂移、多出句号
+deck fix <项目> <提示词目录> <生图目录> --pages p05   只错一两处字时局部改字，其余像素不变
+deck audit <项目> init|check                   审图：子 agent 逐页对照视觉规划看图，汇总全稿问题
 deck sheet <输出.jpg> 标签=图 ... | deck sheet <输出前缀> --raw <生图目录>
 deck compose <项目>                           阶段 3：图文版 PPTX + PDF
 deck editable <工作目录> <图文版.pptx> <输出.pptx> [--outline outline.json] [--ref 图文版.pdf]
