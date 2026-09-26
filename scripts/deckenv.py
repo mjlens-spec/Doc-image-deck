@@ -127,6 +127,35 @@ ICON_POLICIES = {
                                     'generic line icons.'),
 }
 TEMPERATURES = {'safe': '行业常见款', 'distinct': '与行业常见款拉开'}
+
+# direction.json "type_classes": the Chinese type classes a direction uses, so the generated letterforms stay close to
+# fonts the editable deck can set. Body text only 黑体 / 宋体 (the editable deck sets them with Noto Sans / Serif CJK);
+# 楷体 / 圆体 / 行楷 only for titles and short accents.
+TYPE_CLASSES = {
+    'hei':     ('黑体', 'a standard Chinese sans-serif (黑体)', 'sans'),
+    'song':    ('宋体', 'a standard Chinese serif (宋体 / Song)', 'serif'),
+    'kai':     ('楷体', 'a standard Chinese regular script (楷体)', None),
+    'yuan':    ('圆体', 'a standard Chinese rounded sans-serif (圆体)', 'sans'),
+    'xingkai': ('行楷', 'a standard Chinese semi-cursive script (行楷), for a few characters only', None),
+}
+BODY_CLASSES = ('hei', 'song')
+TYPE_RULE = ('Typefaces: only common, standard Chinese typefaces of the classes named here, in their usual letterforms; '
+             'weight changes are fine. No decorative display lettering: no outlined, inlined, 3D, extruded, distorted, '
+             'stretched, pixel, graffiti, brush-effect or custom hand-lettered characters, no texture or image fill inside '
+             'the letters.')
+
+# per-slide variation inside one design system (each slide is generated on its own, so the variation is planned here and
+# written into every prompt). The first option of each axis is the default; direction.json "variety" may replace them.
+VARIETY = {
+    'surface': ('页面底面', ['the plain page background', 'one large tinted panel behind the main visual',
+                            'a wide band of the dark tone across part of the slide', 'the main visual running off one slide edge']),
+    'accent':  ('强调方式', ['the accent colour as a solid fill on the focal element', 'the accent colour as a thick bar or rule beside the focal element',
+                            'the accent colour only on the key words or numbers', 'the accent colour as an outline around the focal element']),
+    'framing': ('配图取景', ['a medium view of the picture subject', 'a tight close-up crop', 'a wide view with generous empty space',
+                            'the subject cut out on the plain ground']),
+    'device':  ('辅助图形', ['hairline rules and dividers', 'one oversized geometric shape partly cropped by the slide edge',
+                            'a thin frame around the main visual', 'dotted leader lines linking labels to shapes']),
+}
 # looks an image model falls into by default; banned on every slide unless the direction lists the key in "allow"
 BASE_AVOID = {
     '3d':        'glossy plastic 3D objects, isometric blocks and 3D bar charts',

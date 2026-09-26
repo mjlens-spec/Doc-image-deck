@@ -13,6 +13,8 @@ Reads 01_设计方向/*/direction.json (schema: references/02_设计方向与生
     a shared light or dark background colour is reported;
   - each direction has its own cover {"layout", "motif"}: the three cover layouts and cover motifs differ (the cover
     no longer comes from the outline's layout_hint / image_hint, so the directions do not share one composition);
+  - type_classes {"title", "body", "accent"} from deckenv.TYPE_CLASSES, body only hei / song (the editable deck sets
+    body text with Noto Sans / Serif CJK); variety (optional) replaces the per-slide variation options of deckenv.VARIETY;
   - icons (deckenv.ICON_POLICIES, default none), temperature (safe = the category's usual look, distinct = away
     from it; three safe directions fail) and allow (keys of deckenv.BASE_AVOID) take known values.
 Writes 01_设计方向/方向说明.md (one column per direction). Exit 1 when a check fails.
@@ -25,7 +27,7 @@ import deckenv as E
 import brand
 
 REQUIRED = ['id', 'name', 'summary', 'source', 'brand_fit', 'light', 'dark', 'imagery', 'imagery_mode', 'dims', 'axes',
-            'cover', 'temperature', 'tone']
+            'cover', 'temperature', 'type_classes', 'tone']
 
 
 def key(s):
@@ -73,6 +75,18 @@ def check(dirs):
         cover = d.get('cover') or {}
         if d.get('cover') and not (isinstance(cover, dict) and cover.get('layout') and cover.get('motif')):
             errs.append('方向 %s 的 cover 要写 layout（封面构图）和 motif（封面主体）' % tag)
+        tc = d.get('type_classes') or {}
+        if d.get('type_classes'):
+            if tc.get('body') not in E.BODY_CLASSES:
+                errs.append('方向 %s 的 type_classes.body 只能是 hei（黑体）或 song（宋体）：可编辑版用思源黑体、思源宋体还原正文' % tag)
+            for role in ('title', 'accent'):
+                if tc.get(role) and tc[role] not in E.TYPE_CLASSES:
+                    errs.append('方向 %s 的 type_classes.%s 要从这些值里选：%s' % (tag, role, '、'.join(E.TYPE_CLASSES)))
+            if not tc.get('title'):
+                errs.append('方向 %s 的 type_classes 缺 title' % tag)
+        for ax, opts in (d.get('variety') or {}).items():
+            if ax not in E.VARIETY or not isinstance(opts, list) or not 2 <= len(opts) <= 6:
+                errs.append('方向 %s 的 variety.%s 要是 2–6 个英文短句的列表（键：%s）' % (tag, ax, '、'.join(E.VARIETY)))
         if d.get('icons') and d['icons'] not in E.ICON_POLICIES:
             errs.append('方向 %s 的 icons 要从这些值里选：%s' % (tag, '、'.join(E.ICON_POLICIES)))
         if d.get('temperature') and d['temperature'] not in E.TEMPERATURES:
@@ -131,6 +145,9 @@ def comparison(dirs):
     rows.append(('封面', ['%s；%s' % ((d.get('cover') or {}).get('layout', ''), (d.get('cover') or {}).get('motif', ''))
                          if isinstance(d.get('cover'), dict) else '' for d in dirs]))
     rows.append(('图标', [E.ICON_POLICIES.get(d.get('icons') or 'none', ('',))[0] for d in dirs]))
+    tcl = lambda d: '、'.join('%s %s' % (lab, E.TYPE_CLASSES[(d.get('type_classes') or {})[k]][0]) for k, lab in
+                             (('title', '标题'), ('body', '正文'), ('accent', '点缀')) if (d.get('type_classes') or {}).get(k) in E.TYPE_CLASSES)
+    rows.append(('字体大类', [tcl(d) for d in dirs]))
     rows.append(('与行业常见款', [E.TEMPERATURES.get(d.get('temperature'), '') for d in dirs]))
     rows.append(('明暗', ['、'.join('%s %s' % ({'cover': '封面', 'section': '章节', 'content': '内容', 'closing': '封底'}.get(k, k),
                                               {'light': '浅', 'dark': '深'}.get(v, v)) for k, v in (d.get('tone') or {}).items())

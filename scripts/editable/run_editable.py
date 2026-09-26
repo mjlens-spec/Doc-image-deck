@@ -57,13 +57,35 @@ def main():
         run('corpus.py', work, *draft)
     cfg = os.path.join(work, 'config.json')
     if not os.path.exists(cfg):
-        json.dump({'pages': {}, 'replace': {}}, open(cfg, 'w', encoding='utf-8'))
+        c = {'pages': {}, 'replace': {}}
+        fams = direction_families(outline)
+        if fams:
+            c['families'] = fams
+            print('按设计方向的字体大类只拟合：%s' % '、'.join(fams), flush=True)
+        json.dump(c, open(cfg, 'w', encoding='utf-8'))
     run('run_pages.py', work)
     run('build_pptx.py', work, out)
     pdf = out[:-5] + '.pdf'
     run('verify.py', work, out, pdf, *(['--ref', ref] if ref else []))
     run('proof_sheet.py', work, os.path.join(work, '03_QA', '校对表'), keep='first')
     run('qa_sheet.py', work, pdf, os.path.join(work, '03_QA', '全稿对照'), 8, keep='last')
+
+
+def direction_families(outline):
+    """Font families to fit when the chosen direction declares its type classes (02_生图/prompts/direction.json next to
+    the outline's project): only 黑体 / 圆体 -> sans, only 宋体 -> serif; mixed or undeclared -> both (fit decides)."""
+    if not outline:
+        return None
+    dp = os.path.join(os.path.dirname(os.path.dirname(outline)), '02_生图', 'prompts', 'direction.json')
+    if not os.path.exists(dp):
+        return None
+    sys.path.insert(0, os.path.dirname(HERE))
+    import deckenv as E
+    tc = json.load(open(dp, encoding='utf-8')).get('type_classes') or {}
+    fams = {E.TYPE_CLASSES[k][2] for k in tc.values() if k in E.TYPE_CLASSES}
+    if None in fams or not fams:
+        return None
+    return sorted(fams)
 
 
 def pages_stale(work, src):

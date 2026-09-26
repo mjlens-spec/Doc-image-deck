@@ -3,7 +3,9 @@
 
 Usage: build_prompts.py <project> --direction <direction.json> --out <prompts_dir> [--pages p01,p05]
 
-prompt = slide spec + direction style block (light or dark) + what stays fixed across the deck + this slide's
+prompt = slide spec + direction style block (light or dark) + typeface classes (common 黑体 / 宋体 / 楷体 / 圆体 / 行楷
+letterforms only, so the editable deck can match them) + what stays fixed across the deck + this slide's variation
+inside the design system (surface, accent, picture framing, graphic device; planned by plan_variety, 变化规划.md) + this slide's
 visual brief (message, information structure, how to draw it, focal point, composition skeleton, and the skeletons of
 the neighbouring slides so this one differs from them) + layout and imagery hints + verbatim text, grouped by the part
 of the drawing it belongs to + diagram and text rules (only the listed text, no logo, no page number, reserved corners
@@ -105,6 +107,60 @@ def page_hints(page, direction):
     return layout, img or NO_ICON_HINT, motif
 
 
+def type_line(direction):
+    """The typeface classes of the direction as one prompt line (type_classes: title / body / accent)."""
+    tc = direction.get('type_classes') or {}
+    parts = []
+    for role, lab in (('title', 'titles'), ('body', 'body text and labels'), ('accent', 'short accents (a few characters)')):
+        k = tc.get(role)
+        if k in E.TYPE_CLASSES:
+            parts.append('%s in %s' % (lab, E.TYPE_CLASSES[k][1]))
+    return E.TYPE_RULE + (' Use ' + '; '.join(parts) + '.' if parts else ' Use 黑体, 宋体, 楷体 or 圆体 classes only.')
+
+
+VARIED = ('content', 'summary', 'agenda', 'appendix')
+
+
+def plan_variety(outline, direction):
+    """{pid: {axis: option}} for content-like slides: every axis rotates through the direction's options (the first is the
+    default and used most on the surface axis), neighbouring slides differ on every axis, and no full combination comes
+    back within six slides. A page's visual.variant overrides single axes."""
+    opts = {ax: list((direction.get('variety') or {}).get(ax) or E.VARIETY[ax][1]) for ax in E.VARIETY}
+    out, prev, recent, c = {}, {}, [], 0
+    for pid, page in zip(E.page_ids(outline), outline['pages']):
+        if page.get('kind', 'content') not in VARIED:
+            continue
+        v = {}
+        for i, ax in enumerate(E.VARIETY):
+            o = opts[ax]
+            if ax == 'surface':
+                pick = o[0] if c % 2 == 0 or len(o) < 2 else o[1 + (c // 2) % (len(o) - 1)]
+            else:
+                pick = o[(c + i) % len(o)]
+            if pick == prev.get(ax) and len(o) > 1 and ax != 'surface':
+                pick = o[(o.index(pick) + 1) % len(o)]
+            v[ax] = pick
+        while tuple(v.values()) in recent and len(opts['device']) > 1:
+            v['device'] = opts['device'][(opts['device'].index(v['device']) + 1) % len(opts['device'])]
+        own = brief(page).get('variant') if isinstance(brief(page).get('variant'), dict) else {}
+        v.update({k: own[k] for k in own if k in E.VARIETY})
+        out[pid] = v
+        prev = v
+        recent = (recent + [tuple(v.values())])[-6:]
+        c += 1
+    return out
+
+
+def variety_md(outline, plan):
+    out = ['# 变化规划', '', '风格系统全稿不变；每页在四个方向上按下表变化（相邻两页不同）。页面 `visual.variant` 可以改写单项。', '',
+           '| 页 | 标题 | %s |' % ' | '.join(E.VARIETY[a][0] for a in E.VARIETY), '|---|---|' + '---|' * len(E.VARIETY)]
+    for pid, page in zip(E.page_ids(outline), outline['pages']):
+        if pid in plan:
+            out.append('| %s | %s | %s |' % (pid.upper(), page.get('title', '').replace('|', '｜'),
+                                             ' | '.join(plan[pid][a] for a in E.VARIETY)))
+    return '\n'.join(out) + '\n'
+
+
 def avoid_list(cfg, direction):
     allow = set(direction.get('allow') or [])
     if direction.get('imagery_mode') == '3d':
@@ -117,7 +173,7 @@ def avoid_list(cfg, direction):
     return avoid
 
 
-def build(cfg, outline, page, n, total, direction):
+def build(cfg, outline, page, n, total, direction, variant=None):
     tone = page_tone(page, direction)
     style = direction.get(tone) or direction.get('light') or ''
     v = brief(page)
@@ -135,10 +191,18 @@ def build(cfg, outline, page, n, total, direction):
         lines.append('Imagery mode of this direction: %s. Render the slide imagery below in this mode; when the imagery '
                      'note names a subject that does not suit the mode, keep the subject and translate it into this mode; when it asks '
                      'for no photograph, follow the note.' % mode[1])
-    lines.append('Deck system: this is one slide of a %d-slide deck. Keep the design system identical on every slide: background, '
-                 'palette, typefaces and weights, title position and size, margins, rules, icon line weight and image grading. '
+    lines.append(type_line(direction))
+    lines.append('Deck system: this is one slide of a %d-slide deck. Keep the design system identical on every slide: base background '
+                 'colour, palette, typefaces and weights, title position and size, margins, line weights and image grading. '
                  'What changes from slide to slide is the composition and the kind of visual, chosen from this slide\'s content below; '
                  'do not fall back on a generic title-plus-cards template.' % total)
+    if variant:
+        lines.append('Variation for this slide, inside the same design system (neighbouring slides use other options, so the '
+                     'deck does not look the same page after page): surface — %s; accent — %s; picture and decorative-graphic '
+                     'framing — %s (not the diagram itself); secondary graphic device — %s. This variation takes precedence over '
+                     'the reference images: do not add other ornaments, and do not repeat the panels, bands or decorative shapes '
+                     'seen in them.' % (
+                         variant['surface'], variant['accent'], variant['framing'], variant['device']))
     lines.append('')
     lines.append('Slide role: %s' % ROLE.get(page.get('kind'), 'content page'))
     if v.get('message'):
@@ -257,14 +321,18 @@ def main():
     want = [p.strip() for p in a.pages.split(',') if p.strip()] or ids
     idx_path = os.path.join(a.out, 'index.json')
     index = json.load(open(idx_path, encoding='utf-8')) if os.path.exists(idx_path) else {}
+    variety = plan_variety(outline, direction)
+    open(os.path.join(a.out, '变化规划.md'), 'w', encoding='utf-8').write(variety_md(outline, variety))
     for n, (pid, page) in enumerate(zip(ids, outline['pages']), 1):
         if pid not in want:
             continue
-        tone, text = build(cfg, outline, page, n, len(ids), direction)
+        tone, text = build(cfg, outline, page, n, len(ids), direction, variety.get(pid))
         fn = os.path.join(a.out, pid + '.txt')
         open(fn, 'w', encoding='utf-8').write(text)
         index[pid] = dict(tone=tone, file=pid + '.txt', n=n, kind=page.get('kind', 'content'), title=page.get('title', ''),
                           skeleton=brief(page).get('skeleton'), strings=[s for _, s in E.page_strings(page)])
+        if variety.get(pid):
+            index[pid]['variant'] = variety[pid]
         if a.corner_guide or cfg.get('corner_guide'):
             g = corner_guide(cfg, outline['pages'], n, a.out)
             if g:

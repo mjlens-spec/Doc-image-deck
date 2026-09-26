@@ -19,7 +19,8 @@ not counted); a section page when project.json has "section_pages": false; a pag
 for the deck mode (deckenv.CAPACITY: body CJK characters and printed strings; tables at most 6 rows x 5 columns); a
 title over 30 characters (appendix pages always use the read capacity); in present mode, more than 3 dense content slides in a row, or no light slide in a deck of
 8 or more (light = hero / bignum with at most half the body capacity).
-Warnings: neighbouring slides with the same structure; the same form or motif text on two slides; a kicker over 8
+In decks of 8+ content slides a skeleton (other than hero) may not come back on the slide after next.
+Warnings: neighbouring slides with the same structure; the same form or motif text on two slides; similar motifs; a kicker over 8
 characters; a content slide with under 20 body characters that is not a hero / bignum slide (merge candidate).
 Writes 00_白板稿/视觉规划.md. build_prompts.py runs the same check and refuses to write prompts while it fails.
 """
@@ -78,6 +79,15 @@ def capacity(outline, cfg):
                     '把细节移进讲稿' if mode == 'present' else '把明细移进附录'))
             if p.get('kind', 'content') == 'content' and body < 20 and sk not in ('hero', 'bignum'):
                 warns.append('%s 正文只有 %d 字：考虑与相邻页合并，或改用大字、大数字骨架' % (pid, body))
+    if mode == 'read':
+        content = [(pid, p) for pid, p in zip(ids, pages) if p.get('kind', 'content') in ('content', 'summary')]
+        if len(content) >= 10:                         # long reading decks: a change of pace at least every six slides
+            for i in range(0, len(content) - 5):
+                win = content[i:i + 6]
+                if all(density(p, mode) == 'dense' and p.get('tone') != 'dark' for _, p in win):
+                    warns.append('%s–%s 连续 6 页都是高密度浅色页：长稿里每 6 页至少放一页低密度页（大字论断、大数字）或深色页（tone: dark），'
+                                 '否则看久了显得雷同' % (win[0][0], win[-1][0]))
+                    break
     if mode == 'present':
         content = [(pid, p) for pid, p in zip(ids, pages) if p.get('kind', 'content') in ('content', 'summary')]
         run = []
@@ -134,10 +144,15 @@ def check(outline, cfg=None):
         if len(pids) > cap:
             errs.append('构图骨架「%s」用了 %d 页（%s），内容页 %d 页时每种最多 %d 页' % (
                 label(E.SKELETONS, sk), len(pids), '、'.join(pids), len(content), cap))
+    if len(content) >= 8:                              # long decks: a skeleton comes back no sooner than the third slide
+        for (pa, va), (pb, vb) in zip(content, content[2:]):
+            if va.get('skeleton') and va.get('skeleton') == vb.get('skeleton') and va['skeleton'] != 'hero':
+                errs.append('%s 与 %s 只隔一页，构图骨架相同（%s）：长稿里同一骨架至少隔两页' % (pa, pb, label(E.SKELETONS, va['skeleton'])))
     lists = [pid for pid, v in content if v.get('structure') == 'list']
     if len(lists) > max(1, len(content) // 5):
         errs.append('「并列要点」用了 %d 页（%s）：先看这些页的要点之间有没有先后、因果、包含或对比关系，换成对应的结构' % (
             len(lists), '、'.join(lists)))
+    import difflib
     for key, lab in (('form', '画法'), ('motif', '配图母题')):
         seen = {}
         for pid, _, v in vis:
@@ -146,6 +161,10 @@ def check(outline, cfg=None):
                 continue
             if t in seen:
                 warns.append('%s 与 %s 的%s相同' % (seen[t], pid, lab))
+            elif key == 'motif' and any(difflib.SequenceMatcher(None, t, u).ratio() >= 0.6 for u in seen):
+                other = next(seen[u] for u in seen if difflib.SequenceMatcher(None, t, u).ratio() >= 0.6)
+                warns.append('%s 与 %s 的配图母题相近：换一个题材或景别，长稿里同类配图反复出现会显得雷同' % (other, pid))
+                seen[t] = pid
             else:
                 seen[t] = pid
     ce, cw = capacity(outline, cfg)

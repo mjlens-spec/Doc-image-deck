@@ -15,7 +15,7 @@ import hostos
 COMMANDS = {
     'humanize': 'humanize.py', 'storyline': 'storyline.py', 'whiteboard': 'whiteboard.py', 'punct': 'punct.py', 'visual': 'visual.py', 'refs': 'refs.py',
     'approve': 'approve.py', 'brand': 'brand.py', 'logo': 'logo.py', 'directions': 'directions.py',
-    'prompts': 'build_prompts.py', 'gen': 'gen_batch.py', 'textcheck': 'textcheck.py', 'fix': 'fix.py', 'audit': 'slidereview.py', 'sheet': 'contact_sheet.py', 'compose': 'compose.py', 'pdf': 'editable/pptrender.py',
+    'prompts': 'build_prompts.py', 'gen': 'gen_batch.py', 'textcheck': 'textcheck.py', 'fix': 'fix.py', 'audit': 'slidereview.py', 'variety': 'variety.py', 'sheet': 'contact_sheet.py', 'compose': 'compose.py', 'pdf': 'editable/pptrender.py',
     'editable': 'editable/run_editable.py', 'layers': 'editable/run_pages.py', 'build': 'editable/build_pptx.py',
     'verify': 'editable/verify.py', 'review': 'editable/review_grid.py', 'proof': 'editable/proof_sheet.py',
     'zoom': 'editable/zoomcmp.py', 'qasheet': 'editable/qa_sheet.py', 'report': 'editable/report.py',
@@ -42,6 +42,7 @@ deck gen <提示词目录> --out <生图目录> [--pages ..] [--ref-light 图] [
 deck textcheck <项目> <提示词目录> <生图目录>     生图文字核对：缺字、预留角落、多出文字、标题漂移、多出句号
 deck fix <项目> <提示词目录> <生图目录> --pages p05   只错一两处字时局部改字，其余像素不变
 deck audit <项目> init|check                   审图：子 agent 逐页对照视觉规划看图，汇总全稿问题
+deck variety <项目> [生图目录]                   同质化检查：页面之间版面相似度，列出过于相近的页
 deck sheet <输出.jpg> 标签=图 ... | deck sheet <输出前缀> --raw <生图目录>
 deck compose <项目>                           阶段 3：图文版 PPTX + PDF
 deck editable <工作目录> <图文版.pptx> <输出.pptx> [--outline outline.json] [--ref 图文版.pdf]

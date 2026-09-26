@@ -21,9 +21,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IMAGEGEN = os.path.join(HERE, 'imagegen.py')
-REF_NOTE = ('The attached image(s) are STYLE REFERENCES ONLY: match their colour palette, typography and type weights, header '
-            'treatment, margins, rules, imagery treatment and overall finish. Do NOT copy their text, their content, their '
-            'composition, their diagram type or their picture subject: they are other slides of the same deck, and this slide '
+REF_NOTE = ('The attached image(s) are STYLE REFERENCES ONLY: match their colour palette, typography and type weights, title '
+            'position and size, margins and overall finish. Do NOT copy their panels, bands, frames or decorative shapes (this '
+            'slide gets its own, described below), their text, their content, their '
+            'composition, their diagram type, their picture subject or their ornaments and decorative details: they are other slides '
+            'of the same deck, and this slide '
             'must look different from them. Compose this slide as described below.\n\n')
 SKELETON_NOTE = ('The FIRST attached image is another slide of this deck with the same kind of composition: follow its grid, '
                  'margins, header and title treatment, type sizes and the way this kind of layout is built. Do NOT copy its '

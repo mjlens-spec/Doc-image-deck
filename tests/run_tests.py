@@ -126,6 +126,7 @@ def direction(i, mode, dims, source='original', refs_=None, axes=None, cover=Non
             'dims': dict(zip(['typeface', 'palette', 'layout', 'imagery', 'texture', 'diagram'], dims)),
             'axes': dict(zip(['typeface', 'layout', 'texture', 'diagram', 'color_strategy'], axes)),
             'cover': {'layout': cover[0], 'motif': cover[1]}, 'temperature': temperature,
+            'type_classes': {'title': 'song', 'body': 'hei'},
             '_path': '/nonexistent/%s/direction.json' % i}
 
 
@@ -183,6 +184,14 @@ class TestDirections(unittest.TestCase):
         self.assertTrue(any('icons' in e for e in errs) and any('allow' in e for e in errs))
         d = self.good(); del d[0]['cover']
         self.assertTrue(any('缺少字段' in e and 'cover' in e for e in directions.check(d)[0]))
+
+    def test_type_classes_and_variety(self):
+        d = self.good(); d[0]['type_classes'] = {'title': 'xingkai', 'body': 'kai'}
+        self.assertTrue(any('type_classes.body' in e for e in directions.check(d)[0]))
+        d = self.good(); d[1]['type_classes'] = {'title': 'fancy', 'body': 'hei'}
+        self.assertTrue(any('type_classes.title' in e for e in directions.check(d)[0]))
+        d = self.good(); d[2]['variety'] = {'surface': ['only one']}
+        self.assertTrue(any('variety.surface' in e for e in directions.check(d)[0]))
 
 
 BRAND_DONE = """# 品牌调研
@@ -403,6 +412,12 @@ class TestVisual(unittest.TestCase):
         self.assertTrue(any('「并列卡片」用了 4 页' in e and '最多 2 页' in e for e in errs))
         warns = visual.check(planned(2, ['split', 'diagram'], ['flow', 'flow']))[1]
         self.assertTrue(any('信息结构相同' in w for w in warns))
+
+    def test_long_deck_spacing(self):
+        errs = visual.check(planned(8, ['split', 'diagram', 'split', 'cards', 'bignum', 'bands', 'radial', 'table']))[0]
+        self.assertTrue(any('p02 与 p04 只隔一页' in e for e in errs))
+        errs = visual.check(planned(6, ['split', 'diagram', 'split', 'cards', 'bignum', 'bands']))[0]
+        self.assertFalse(any('只隔一页' in e for e in errs))                   # short decks: adjacency only
 
     def test_repeated_motif(self):
         o = planned(3, ['split', 'diagram', 'bignum'], ['flow', 'loop', 'kpi'])
@@ -656,6 +671,26 @@ class TestPromptV2(unittest.TestCase):
         self.assertNotIn('glossy plastic 3D objects', text)
         d = {'name': 'D', 'light': 'x', 'dark': 'y', 'allow': ['glass']}
         self.assertNotIn('glassmorphism', build_prompts.build(self.cfg, self.o, self.o['pages'][1], 2, 4, d)[1])
+
+    def test_type_line_and_variety(self):
+        d = {'name': 'D', 'light': 'x', 'dark': 'y', 'type_classes': {'title': 'kai', 'body': 'song'}}
+        text = build_prompts.build(self.cfg, self.o, self.o['pages'][1], 2, 4, d, {'surface': 'S1', 'accent': 'A1', 'framing': 'F1', 'device': 'D1'})[1]
+        self.assertIn('titles in a standard Chinese regular script', text)
+        self.assertIn('No decorative display lettering', text)
+        self.assertIn('surface — S1; accent — A1', text)
+        o = planned(12, ['split', 'diagram', 'cards', 'bignum'] * 3)
+        plan = build_prompts.plan_variety(o, {})
+        rows = [plan[p] for p in E.page_ids(o) if p in plan]
+        self.assertEqual(len(rows), 12)
+        for a, b in zip(rows, rows[1:]):
+            for ax in ('accent', 'framing', 'device'):
+                self.assertNotEqual(a[ax], b[ax])
+        combos = [tuple(r.values()) for r in rows]
+        for i in range(len(combos)):
+            self.assertNotIn(combos[i], combos[max(0, i - 6):i])
+        self.assertEqual(sum(r['surface'] == E.VARIETY['surface'][1][0] for r in rows), 6)     # the default on every other slide
+        o['pages'][3]['visual']['variant'] = {'surface': 'mine'}
+        self.assertEqual(build_prompts.plan_variety(o, {})[o['pages'][3]['id']]['surface'], 'mine')
 
     def test_skeleton_ref_plan(self):
         index = {p: dict(n=i, kind='content', skeleton=sk) for i, (p, sk) in
